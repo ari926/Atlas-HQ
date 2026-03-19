@@ -29,7 +29,7 @@ Atlas HQ is the corporate operations command center for Talaria Transportation L
 | Hosting | Cloudflare Pages → custom domain with SSL |
 | Design | Nexus Design System, Inter font, Hydra Teal theme |
 | AI Search | Claude API via Cloudflare Worker (planned) |
-| Google Drive | Sync to Supabase Storage (planned) |
+| Google Drive | Drive API v3 — read-only, files stay in Google (no copies in Supabase) |
 
 **ES5 constraint** — matches Atlas V2. No arrow functions in certain contexts, no import/export. Check existing file patterns before introducing new syntax.
 
@@ -54,7 +54,7 @@ Atlas HQ is the corporate operations command center for Talaria Transportation L
   compliance.js      — Compliance tracking: filterable list, category/status/state filters
   licensing.js       — License management: cards grouped by state, expiration alerts
   hr.js              — HR: employee directory + read-only drivers tab
-  documents.js       — Document browser: folder tree, file upload to Supabase Storage
+  documents.js       — Document browser: Google Drive API, files stay in Google, breadcrumb nav
   search.js          — AI search overlay: local full-text search (Claude API planned)
   style.css          — Nexus design system (forked from Atlas V2, HQ-specific additions)
   fonts/             — Inter WOFF2 (400/500/600/700)

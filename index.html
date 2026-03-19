@@ -8,6 +8,8 @@
   <meta name="theme-color" content="#01696f">
   <link rel="stylesheet" href="./style.css?v=20260319hq1">
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1"></script>
+  <script defer src="https://accounts.google.com/gsi/client"></script>
+  <script defer src="https://apis.google.com/js/api.js"></script>
   <script defer src="./shared.js?v=20260319hq1"></script>
   <script defer src="./dashboard.js?v=20260319hq1"></script>
   <script defer src="./projects.js?v=20260319hq1"></script>
@@ -248,12 +250,9 @@
       <div class="view-header">
         <div>
           <h1 class="view-title">Documents</h1>
-          <p class="view-subtitle">File management and storage</p>
+          <p class="view-subtitle">Google Drive — files stay secure in Google's cloud</p>
         </div>
-        <div style="display:flex;gap:0.5rem;">
-          <button class="btn btn-secondary btn-sm" onclick="openFolderModal()">+ New Folder</button>
-          <button class="btn btn-primary btn-sm" onclick="openUploadModal()">Upload File</button>
-        </div>
+        <div id="drive-header-actions" style="display:flex;gap:0.5rem;"></div>
       </div>
       <div id="documents-content"><div class="skeleton" style="height:400px;"></div></div>
     </div>

@@ -1,192 +1,184 @@
-/* ═══ Atlas HQ — Documents ═══ */
+/* ═══ Atlas HQ — Documents (Google Drive API) ═══
+   Files stay in Google Drive — Atlas HQ shows them inline.
+   No files are copied to Supabase. Google's security protects the originals.
+   Metadata (tags, bookmarks) can be stored in hq_documents table. */
 
-var _currentFolderId = null;
+var _currentDriveFolderId = 'root';
+var _driveBreadcrumb = [{ id: 'root', name: 'My Drive' }];
+
+/* Called when both GAPI + GIS are initialized */
+function _onDriveReady() {
+  /* Nothing to do until user navigates to Documents tab */
+}
 
 async function renderDocuments() {
-  try {
-    var docs = await fetchDocuments();
-    var folders = await fetchFolders();
-    var container = document.getElementById('documents-content');
-    if (!container) return;
+  var container = document.getElementById('documents-content');
+  var headerActions = document.getElementById('drive-header-actions');
+  if (!container) return;
 
-    /* Build folder tree */
-    var treeHtml = '<div class="doc-tree">';
-    treeHtml += '<div class="doc-tree-item' + (!_currentFolderId ? ' active' : '') + '" onclick="_currentFolderId=null;renderDocuments()">';
-    treeHtml += '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
-    treeHtml += '<span>All Files</span></div>';
-    folders.forEach(function(f) {
-      if (!f.parent_id) {
-        treeHtml += '<div class="doc-tree-item' + (_currentFolderId === f.id ? ' active' : '') + '" onclick="_currentFolderId=\'' + f.id + '\';renderDocuments()">';
-        treeHtml += '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
-        treeHtml += '<span>' + escapeHtml(f.name) + '</span></div>';
-        /* Sub-folders */
-        folders.forEach(function(sf) {
-          if (sf.parent_id === f.id) {
-            treeHtml += '<div class="doc-tree-item' + (_currentFolderId === sf.id ? ' active' : '') + '" style="padding-left:1.5rem;" onclick="_currentFolderId=\'' + sf.id + '\';renderDocuments()">';
-            treeHtml += '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
-            treeHtml += '<span>' + escapeHtml(sf.name) + '</span></div>';
-          }
-        });
-      }
-    });
-    treeHtml += '</div>';
-
-    /* Filter docs by current folder */
-    var filteredDocs = _currentFolderId
-      ? docs.filter(function(d) { return d.folder_id === _currentFolderId; })
-      : docs;
-
-    /* Breadcrumb */
-    var breadcrumb = '<div class="doc-breadcrumb">';
-    breadcrumb += '<a onclick="_currentFolderId=null;renderDocuments()">All Files</a>';
-    if (_currentFolderId) {
-      var currentFolder = folders.filter(function(f) { return f.id === _currentFolderId; })[0];
-      if (currentFolder) {
-        if (currentFolder.parent_id) {
-          var parent = folders.filter(function(f) { return f.id === currentFolder.parent_id; })[0];
-          if (parent) breadcrumb += ' <span style="margin:0 0.25rem;">/</span> <a onclick="_currentFolderId=\'' + parent.id + '\';renderDocuments()">' + escapeHtml(parent.name) + '</a>';
-        }
-        breadcrumb += ' <span style="margin:0 0.25rem;">/</span> ' + escapeHtml(currentFolder.name);
-      }
-    }
-    breadcrumb += '</div>';
-
-    /* File grid */
-    var filesHtml = '';
-    if (filteredDocs.length === 0) {
-      filesHtml = '<div class="doc-empty"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><div class="empty-state-title">No files here</div><div class="empty-state-text">Upload files or create folders to get started.</div></div>';
+  /* Show connect button or disconnect option */
+  if (headerActions) {
+    if (isGoogleDriveConnected()) {
+      headerActions.innerHTML = '<button class="btn btn-secondary btn-sm" onclick="disconnectGoogleDrive()">Disconnect Drive</button>';
     } else {
-      filesHtml = '<div class="doc-file-grid">';
-      filteredDocs.forEach(function(doc) {
-        var ext = (doc.name || '').split('.').pop().toLowerCase();
-        var iconClass = 'other';
-        var iconText = ext.toUpperCase().substring(0, 4);
-        if (ext === 'pdf') iconClass = 'pdf';
-        else if (ext === 'doc' || ext === 'docx') iconClass = 'doc';
-        else if (ext === 'xls' || ext === 'xlsx' || ext === 'csv') iconClass = 'sheet';
-        else if (ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'gif' || ext === 'webp') iconClass = 'img';
-
-        filesHtml += '<div class="doc-file-card" onclick="openDocumentDetail(\'' + doc.id + '\')">';
-        filesHtml += '<div class="doc-file-icon ' + iconClass + '">' + iconText + '</div>';
-        filesHtml += '<div class="doc-file-name">' + escapeHtml(doc.name) + '</div>';
-        filesHtml += '<div class="doc-file-meta">' + formatFileSize(doc.size_bytes) + ' &middot; ' + formatDate(doc.created_at) + '</div>';
-        filesHtml += '</div>';
-      });
-      filesHtml += '</div>';
+      headerActions.innerHTML = '';
     }
-
-    container.innerHTML = '<div class="doc-browser">' + treeHtml + '<div class="doc-main">' + breadcrumb + filesHtml + '</div></div>';
-  } catch (err) {
-    console.error('[renderDocuments]', err);
-    showToast('Failed to load documents.', 'error');
   }
-}
 
-function openFolderModal() {
-  document.getElementById('hq-modal-title').textContent = 'New Folder';
-  var body = document.getElementById('hq-modal-body');
-  body.innerHTML = '<div class="form-row"><label class="field-label">Folder Name</label><input type="text" id="folder-name" class="input-field" placeholder="Folder name"></div>';
-  var footer = document.getElementById('hq-modal-footer');
-  footer.innerHTML = '<button class="btn btn-secondary" onclick="closeModal(\'hq-modal\')">Cancel</button><button class="btn btn-primary" id="hq-modal-save">Create</button>';
-  document.getElementById('hq-modal-save').onclick = function() { saveFolder(); };
-  openModal('hq-modal');
-}
-
-async function saveFolder() {
-  var name = document.getElementById('folder-name').value.trim();
-  if (!name) { showToast('Folder name is required.', 'error'); return; }
-  try {
-    await resilientWrite(function() {
-      return sb.from('hq_document_folders').insert({
-        name: name,
-        parent_id: _currentFolderId || null
-      });
-    }, 'createFolder');
-    clearCache('folders');
-    closeModal('hq-modal');
-    renderDocuments();
-    showToast('Folder created.', 'success');
-  } catch (err) { console.error('[saveFolder]', err); showToast('Failed to create folder.', 'error'); }
-}
-
-function openUploadModal() {
-  document.getElementById('hq-modal-title').textContent = 'Upload File';
-  var body = document.getElementById('hq-modal-body');
-  body.innerHTML = '<div class="form-row"><label class="field-label">Select File</label><input type="file" id="doc-file-input" class="input-field" style="padding:0.375rem;"></div>' +
-    '<p style="font-size:var(--text-xs);color:var(--color-tx-muted);margin-top:0.5rem;">File will be uploaded to Supabase Storage and indexed in the documents table.</p>';
-  var footer = document.getElementById('hq-modal-footer');
-  footer.innerHTML = '<button class="btn btn-secondary" onclick="closeModal(\'hq-modal\')">Cancel</button><button class="btn btn-primary" id="hq-modal-save">Upload</button>';
-  document.getElementById('hq-modal-save').onclick = function() { uploadDocument(); };
-  openModal('hq-modal');
-}
-
-async function uploadDocument() {
-  var fileInput = document.getElementById('doc-file-input');
-  if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-    showToast('Please select a file.', 'error');
+  /* Not connected — show connect prompt */
+  if (!isGoogleDriveConnected()) {
+    container.innerHTML = '<div class="empty-state" style="padding:4rem;">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="width:64px;height:64px;margin-bottom:1.5rem;opacity:0.4;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>' +
+      '<div class="empty-state-title" style="font-size:var(--text-base);">Connect Google Drive</div>' +
+      '<div class="empty-state-text" style="max-width:400px;margin:0.5rem auto 1.5rem;">Your documents stay secure in Google\'s cloud. Atlas HQ provides a unified view without copying files.</div>' +
+      '<button class="btn btn-primary" onclick="connectGoogleDrive()" style="gap:0.5rem;">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="18" height="18"><path d="M15.5 2H8.6c-.4 0-.8.2-1 .6L2.1 11.4c-.2.4-.2.8 0 1.2l3 5.2c.2.4.6.6 1 .6h11.8c.4 0 .8-.2 1-.6l3-5.2c.2-.4.2-.8 0-1.2L16.5 2.6c-.2-.4-.6-.6-1-.6z"/></svg>' +
+      'Connect Google Drive</button>' +
+      '<p style="font-size:var(--text-xs);color:var(--color-tx-faint);margin-top:1rem;">Read-only access. Atlas HQ cannot modify or delete your files.</p>' +
+      '</div>';
     return;
   }
-  var file = fileInput.files[0];
-  var fileName = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-  var storagePath = 'uploads/' + fileName;
+
+  /* Connected — load files from Drive API */
+  container.innerHTML = '<div class="search-loading"><span>Loading files from Google Drive...</span></div>';
 
   try {
-    showToast('Uploading...', 'info');
-    var uploadResult = await sb.storage.from('hq-documents').upload(storagePath, file);
-    if (uploadResult.error) throw uploadResult.error;
+    var response = await gapi.client.drive.files.list({
+      pageSize: 50,
+      q: "'" + _currentDriveFolderId + "' in parents and trashed = false",
+      fields: 'files(id, name, mimeType, size, modifiedTime, iconLink, webViewLink, thumbnailLink, parents)',
+      orderBy: 'folder,name',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true
+    });
 
-    await resilientWrite(function() {
-      return sb.from('hq_documents').insert({
-        name: file.name,
-        mime_type: file.type,
-        size_bytes: file.size,
-        storage_path: storagePath,
-        folder_id: _currentFolderId || null,
-        uploaded_by: currentUser ? currentUser.id : null
+    var files = response.result.files || [];
+
+    /* Separate folders and files */
+    var folders = files.filter(function(f) { return f.mimeType === 'application/vnd.google-apps.folder'; });
+    var docs = files.filter(function(f) { return f.mimeType !== 'application/vnd.google-apps.folder'; });
+
+    /* Build breadcrumb */
+    var breadcrumbHtml = '<div class="doc-breadcrumb">';
+    _driveBreadcrumb.forEach(function(crumb, i) {
+      if (i < _driveBreadcrumb.length - 1) {
+        breadcrumbHtml += '<a onclick="navigateToDriveFolder(\'' + crumb.id + '\',' + i + ')">' + escapeHtml(crumb.name) + '</a>';
+        breadcrumbHtml += ' <span style="margin:0 0.25rem;color:var(--color-tx-faint);">/</span> ';
+      } else {
+        breadcrumbHtml += '<span style="color:var(--color-tx);">' + escapeHtml(crumb.name) + '</span>';
+      }
+    });
+    breadcrumbHtml += '</div>';
+
+    /* Build file grid */
+    var gridHtml = '';
+    if (folders.length === 0 && docs.length === 0) {
+      gridHtml = '<div class="doc-empty">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>' +
+        '<div class="empty-state-title">This folder is empty</div></div>';
+    } else {
+      gridHtml = '<div class="doc-file-grid">';
+
+      /* Folders first */
+      folders.forEach(function(folder) {
+        gridHtml += '<div class="doc-file-card" onclick="navigateToDriveFolder(\'' + folder.id + '\')">' +
+          '<div class="doc-file-icon other" style="background:var(--color-primary-hl);color:var(--color-primary);">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="20" height="20"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>' +
+          '</div>' +
+          '<div class="doc-file-name">' + escapeHtml(folder.name) + '</div>' +
+          '<div class="doc-file-meta">Folder</div>' +
+          '</div>';
       });
-    }, 'insertDocument');
 
-    clearCache('documents');
-    closeModal('hq-modal');
-    renderDocuments();
-    showToast('File uploaded.', 'success');
+      /* Files */
+      docs.forEach(function(doc) {
+        var iconInfo = getDriveFileIcon(doc.mimeType, doc.name);
+        gridHtml += '<div class="doc-file-card" onclick="openDriveFile(\'' + escapeHtml(doc.webViewLink || '') + '\')">' +
+          '<div class="doc-file-icon ' + iconInfo.cls + '">' + iconInfo.label + '</div>' +
+          '<div class="doc-file-name">' + escapeHtml(doc.name) + '</div>' +
+          '<div class="doc-file-meta">' + formatFileSize(doc.size ? parseInt(doc.size) : 0) +
+          ' &middot; ' + formatDate(doc.modifiedTime) + '</div>' +
+          '</div>';
+      });
+
+      gridHtml += '</div>';
+    }
+
+    /* Stats bar */
+    var statsHtml = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">' +
+      '<span style="font-size:var(--text-xs);color:var(--color-tx-muted);">' +
+      folders.length + ' folder' + (folders.length !== 1 ? 's' : '') + ', ' +
+      docs.length + ' file' + (docs.length !== 1 ? 's' : '') +
+      '</span>' +
+      '<span style="font-size:var(--text-xs);color:var(--color-tx-faint);">Files secured by Google Drive</span>' +
+      '</div>';
+
+    container.innerHTML = breadcrumbHtml + statsHtml + gridHtml;
   } catch (err) {
-    console.error('[uploadDocument]', err);
-    showToast('Upload failed: ' + (err.message || 'Unknown error'), 'error');
+    console.error('[renderDocuments]', err);
+    if (err.status === 401 || (err.result && err.result.error && err.result.error.code === 401)) {
+      _googleAccessToken = null;
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-title">Session expired</div>' +
+        '<div class="empty-state-text">Your Google Drive session has expired.</div>' +
+        '<button class="btn btn-primary" onclick="connectGoogleDrive()">Reconnect</button></div>';
+    } else {
+      showToast('Failed to load Google Drive files.', 'error');
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-title">Failed to load files</div>' +
+        '<div class="empty-state-text">' + escapeHtml(err.message || 'Unknown error') + '</div>' +
+        '<button class="btn btn-secondary" onclick="renderDocuments()">Retry</button></div>';
+    }
   }
 }
 
-function openDocumentDetail(docId) {
-  /* Simple view — could expand to preview/download */
-  var doc = (dataCache.documents || []).filter(function(d) { return d.id === docId; })[0];
-  if (!doc) return;
-
-  document.getElementById('hq-modal-title').textContent = doc.name;
-  var body = document.getElementById('hq-modal-body');
-  body.innerHTML = '<div style="display:flex;flex-direction:column;gap:0.75rem;">' +
-    '<div class="license-card-detail"><span>Type</span><span>' + escapeHtml(doc.mime_type || 'Unknown') + '</span></div>' +
-    '<div class="license-card-detail"><span>Size</span><span>' + formatFileSize(doc.size_bytes) + '</span></div>' +
-    '<div class="license-card-detail"><span>Uploaded</span><span>' + formatDateTime(doc.created_at) + '</span></div>' +
-    '<div class="license-card-detail"><span>Storage Path</span><span>' + escapeHtml(doc.storage_path || '—') + '</span></div>' +
-    '</div>';
-
-  var footer = document.getElementById('hq-modal-footer');
-  footer.innerHTML = '<button class="btn btn-danger-ghost" onclick="deleteDocument(\'' + docId + '\')">Delete</button><div style="flex:1;"></div><button class="btn btn-secondary" onclick="closeModal(\'hq-modal\')">Close</button>';
-  openModal('hq-modal');
+function navigateToDriveFolder(folderId, breadcrumbIndex) {
+  if (breadcrumbIndex !== undefined) {
+    /* Clicked a breadcrumb — trim to that level */
+    _driveBreadcrumb = _driveBreadcrumb.slice(0, breadcrumbIndex + 1);
+  } else {
+    /* Navigating into a subfolder — need to get its name */
+    var container = document.getElementById('documents-content');
+    var cards = container ? container.querySelectorAll('.doc-file-card') : [];
+    var folderName = folderId;
+    for (var i = 0; i < cards.length; i++) {
+      var nameEl = cards[i].querySelector('.doc-file-name');
+      var metaEl = cards[i].querySelector('.doc-file-meta');
+      if (nameEl && metaEl && metaEl.textContent === 'Folder' && cards[i].getAttribute('onclick').indexOf(folderId) !== -1) {
+        folderName = nameEl.textContent;
+        break;
+      }
+    }
+    _driveBreadcrumb.push({ id: folderId, name: folderName });
+  }
+  _currentDriveFolderId = folderId;
+  renderDocuments();
 }
 
-function deleteDocument(docId) {
-  customConfirm('Delete this document?', async function() {
-    try {
-      var doc = (dataCache.documents || []).filter(function(d) { return d.id === docId; })[0];
-      if (doc && doc.storage_path) {
-        await sb.storage.from('hq-documents').remove([doc.storage_path]).catch(function() {});
-      }
-      await resilientWrite(function() { return sb.from('hq_documents').delete().eq('id', docId); }, 'deleteDocument');
-      clearCache('documents');
-      closeModal('hq-modal');
-      renderDocuments();
-      showToast('Document deleted.', 'success');
-    } catch (err) { console.error('[deleteDocument]', err); showToast('Failed to delete.', 'error'); }
-  });
+function openDriveFile(url) {
+  if (url) {
+    window.open(url, '_blank', 'noopener');
+  }
+}
+
+function getDriveFileIcon(mimeType, name) {
+  mimeType = mimeType || '';
+  name = name || '';
+  var ext = name.split('.').pop().toLowerCase();
+
+  /* Google Workspace types */
+  if (mimeType === 'application/vnd.google-apps.document') return { cls: 'doc', label: 'DOC' };
+  if (mimeType === 'application/vnd.google-apps.spreadsheet') return { cls: 'sheet', label: 'SHEET' };
+  if (mimeType === 'application/vnd.google-apps.presentation') return { cls: 'other', label: 'SLIDE' };
+  if (mimeType === 'application/vnd.google-apps.form') return { cls: 'other', label: 'FORM' };
+
+  /* Standard file types */
+  if (mimeType === 'application/pdf' || ext === 'pdf') return { cls: 'pdf', label: 'PDF' };
+  if (mimeType.indexOf('word') !== -1 || ext === 'doc' || ext === 'docx') return { cls: 'doc', label: 'DOC' };
+  if (mimeType.indexOf('sheet') !== -1 || mimeType.indexOf('excel') !== -1 || ext === 'xls' || ext === 'xlsx' || ext === 'csv') return { cls: 'sheet', label: 'XLS' };
+  if (mimeType.indexOf('image') !== -1 || ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'gif' || ext === 'webp') return { cls: 'img', label: 'IMG' };
+  if (mimeType.indexOf('video') !== -1) return { cls: 'other', label: 'VID' };
+  if (mimeType.indexOf('audio') !== -1) return { cls: 'other', label: 'AUD' };
+  if (ext === 'zip' || ext === 'rar' || ext === '7z') return { cls: 'other', label: 'ZIP' };
+  if (ext === 'txt' || ext === 'md') return { cls: 'doc', label: 'TXT' };
+
+  return { cls: 'other', label: ext.toUpperCase().substring(0, 4) || 'FILE' };
 }

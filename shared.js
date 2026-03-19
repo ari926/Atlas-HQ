@@ -686,8 +686,97 @@ function formatFileSize(bytes) {
   return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
+/* ─── Google Drive API ─── */
+/*
+ * SETUP REQUIRED:
+ * 1. Go to console.cloud.google.com → create a project (or use existing)
+ * 2. Enable "Google Drive API" and "Google Picker API"
+ * 3. Create OAuth 2.0 credentials → Web application
+ *    - Authorized JavaScript origins: http://localhost:5502, https://hq.talaria.com
+ *    - Authorized redirect URIs: same origins
+ * 4. Copy the Client ID below
+ * 5. Also create an API Key (for Picker) and paste below
+ */
+var GOOGLE_CLIENT_ID = ''; /* TODO: paste your Google OAuth Client ID here */
+var GOOGLE_API_KEY = '';   /* TODO: paste your Google API Key here */
+var GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
+var _googleAccessToken = null;
+var _googleTokenClient = null;
+var _gapiInited = false;
+var _gisInited = false;
+
+function initGapiClient() {
+  if (typeof gapi === 'undefined') return;
+  gapi.load('client:picker', function() {
+    gapi.client.init({}).then(function() {
+      gapi.client.load('drive', 'v3').then(function() {
+        _gapiInited = true;
+        _maybeEnableDriveButton();
+      });
+    });
+  });
+}
+
+function initGisClient() {
+  if (typeof google === 'undefined' || !google.accounts) return;
+  if (!GOOGLE_CLIENT_ID) return;
+  _googleTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: GOOGLE_SCOPES,
+    callback: function(tokenResponse) {
+      if (tokenResponse && tokenResponse.access_token) {
+        _googleAccessToken = tokenResponse.access_token;
+        gapi.client.setToken({ access_token: _googleAccessToken });
+        if (typeof renderDocuments === 'function') renderDocuments();
+      }
+    }
+  });
+  _gisInited = true;
+  _maybeEnableDriveButton();
+}
+
+function _maybeEnableDriveButton() {
+  /* Called when both GAPI and GIS are ready */
+  if (_gapiInited && _gisInited && typeof _onDriveReady === 'function') _onDriveReady();
+}
+
+function isGoogleDriveConnected() {
+  return !!_googleAccessToken;
+}
+
+function connectGoogleDrive() {
+  if (!GOOGLE_CLIENT_ID) {
+    showToast('Google Drive not configured. Add your Client ID in shared.js.', 'error');
+    return;
+  }
+  if (!_googleTokenClient) {
+    showToast('Google Sign-In not ready. Please wait and try again.', 'error');
+    return;
+  }
+  /* If no token, request one. If expired, request a new one. */
+  if (!_googleAccessToken) {
+    _googleTokenClient.requestAccessToken({ prompt: 'consent' });
+  } else {
+    _googleTokenClient.requestAccessToken({ prompt: '' });
+  }
+}
+
+function disconnectGoogleDrive() {
+  if (_googleAccessToken && typeof google !== 'undefined' && google.accounts) {
+    google.accounts.oauth2.revoke(_googleAccessToken, function() {});
+  }
+  _googleAccessToken = null;
+  if (typeof gapi !== 'undefined' && gapi.client) gapi.client.setToken(null);
+  if (typeof renderDocuments === 'function') renderDocuments();
+}
+
 /* ─── Init on DOM Ready ─── */
 document.addEventListener('DOMContentLoaded', function() {
   if (!sb) initSupabaseClient();
   initAuth();
+  /* Init Google APIs after a short delay to let CDN scripts load */
+  setTimeout(function() {
+    initGapiClient();
+    initGisClient();
+  }, 500);
 });
