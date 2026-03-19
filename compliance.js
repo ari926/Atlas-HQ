@@ -119,9 +119,9 @@ async function saveComplianceItem(itemId) {
   };
   try {
     if (itemId) {
-      await resilientWrite(function() { return supabase.from('hq_compliance_items').update(data).eq('id', itemId); }, 'updateCompliance');
+      await resilientWrite(function() { return sb.from('hq_compliance_items').update(data).eq('id', itemId); }, 'updateCompliance');
     } else {
-      await resilientWrite(function() { return supabase.from('hq_compliance_items').insert(data); }, 'insertCompliance');
+      await resilientWrite(function() { return sb.from('hq_compliance_items').insert(data); }, 'insertCompliance');
     }
     clearCache('compliance');
     closeModal('hq-modal');
@@ -133,7 +133,7 @@ async function saveComplianceItem(itemId) {
 function deleteComplianceItem(itemId) {
   customConfirm('Delete this compliance item?', async function() {
     try {
-      await resilientWrite(function() { return supabase.from('hq_compliance_items').delete().eq('id', itemId); }, 'deleteCompliance');
+      await resilientWrite(function() { return sb.from('hq_compliance_items').delete().eq('id', itemId); }, 'deleteCompliance');
       clearCache('compliance');
       closeModal('hq-modal');
       renderCompliance();

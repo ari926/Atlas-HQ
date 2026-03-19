@@ -118,9 +118,9 @@ async function saveLicense(licenseId) {
   };
   try {
     if (licenseId) {
-      await resilientWrite(function() { return supabase.from('hq_licenses').update(data).eq('id', licenseId); }, 'updateLicense');
+      await resilientWrite(function() { return sb.from('hq_licenses').update(data).eq('id', licenseId); }, 'updateLicense');
     } else {
-      await resilientWrite(function() { return supabase.from('hq_licenses').insert(data); }, 'insertLicense');
+      await resilientWrite(function() { return sb.from('hq_licenses').insert(data); }, 'insertLicense');
     }
     clearCache('licenses');
     closeModal('hq-modal');
@@ -132,7 +132,7 @@ async function saveLicense(licenseId) {
 function deleteLicense(licenseId) {
   customConfirm('Delete this license?', async function() {
     try {
-      await resilientWrite(function() { return supabase.from('hq_licenses').delete().eq('id', licenseId); }, 'deleteLicense');
+      await resilientWrite(function() { return sb.from('hq_licenses').delete().eq('id', licenseId); }, 'deleteLicense');
       clearCache('licenses');
       closeModal('hq-modal');
       renderLicensing();

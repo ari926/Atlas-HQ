@@ -111,7 +111,7 @@ async function handleTaskDrop(event, newStatus) {
   if (!taskId) return;
   try {
     await resilientWrite(function() {
-      return supabase.from('hq_tasks').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', taskId);
+      return sb.from('hq_tasks').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', taskId);
     }, 'moveTask');
     clearCache('tasks');
     renderProjects();
@@ -152,10 +152,10 @@ async function saveProject(projectId) {
   };
   try {
     if (projectId) {
-      await resilientWrite(function() { return supabase.from('hq_projects').update(data).eq('id', projectId); }, 'updateProject');
+      await resilientWrite(function() { return sb.from('hq_projects').update(data).eq('id', projectId); }, 'updateProject');
     } else {
       data.owner_id = currentUser ? currentUser.id : null;
-      await resilientWrite(function() { return supabase.from('hq_projects').insert(data); }, 'insertProject');
+      await resilientWrite(function() { return sb.from('hq_projects').insert(data); }, 'insertProject');
     }
     clearCache('projects');
     closeModal('hq-modal');
@@ -170,7 +170,7 @@ async function saveProject(projectId) {
 function deleteProject(projectId, name) {
   customConfirm('Delete project "' + name + '" and all its tasks?', async function() {
     try {
-      await resilientWrite(function() { return supabase.from('hq_projects').delete().eq('id', projectId); }, 'deleteProject');
+      await resilientWrite(function() { return sb.from('hq_projects').delete().eq('id', projectId); }, 'deleteProject');
       clearCache('projects');
       clearCache('tasks');
       _currentProjectId = null;
@@ -225,10 +225,10 @@ async function saveTask(taskId, projectId) {
   };
   try {
     if (taskId) {
-      await resilientWrite(function() { return supabase.from('hq_tasks').update(data).eq('id', taskId); }, 'updateTask');
+      await resilientWrite(function() { return sb.from('hq_tasks').update(data).eq('id', taskId); }, 'updateTask');
     } else {
       data.project_id = projectId;
-      await resilientWrite(function() { return supabase.from('hq_tasks').insert(data); }, 'insertTask');
+      await resilientWrite(function() { return sb.from('hq_tasks').insert(data); }, 'insertTask');
     }
     clearCache('tasks');
     closeModal('hq-modal');

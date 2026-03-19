@@ -97,7 +97,7 @@ async function saveFolder() {
   if (!name) { showToast('Folder name is required.', 'error'); return; }
   try {
     await resilientWrite(function() {
-      return supabase.from('hq_document_folders').insert({
+      return sb.from('hq_document_folders').insert({
         name: name,
         parent_id: _currentFolderId || null
       });
@@ -132,11 +132,11 @@ async function uploadDocument() {
 
   try {
     showToast('Uploading...', 'info');
-    var uploadResult = await supabase.storage.from('hq-documents').upload(storagePath, file);
+    var uploadResult = await sb.storage.from('hq-documents').upload(storagePath, file);
     if (uploadResult.error) throw uploadResult.error;
 
     await resilientWrite(function() {
-      return supabase.from('hq_documents').insert({
+      return sb.from('hq_documents').insert({
         name: file.name,
         mime_type: file.type,
         size_bytes: file.size,
@@ -180,9 +180,9 @@ function deleteDocument(docId) {
     try {
       var doc = (dataCache.documents || []).filter(function(d) { return d.id === docId; })[0];
       if (doc && doc.storage_path) {
-        await supabase.storage.from('hq-documents').remove([doc.storage_path]).catch(function() {});
+        await sb.storage.from('hq-documents').remove([doc.storage_path]).catch(function() {});
       }
-      await resilientWrite(function() { return supabase.from('hq_documents').delete().eq('id', docId); }, 'deleteDocument');
+      await resilientWrite(function() { return sb.from('hq_documents').delete().eq('id', docId); }, 'deleteDocument');
       clearCache('documents');
       closeModal('hq-modal');
       renderDocuments();

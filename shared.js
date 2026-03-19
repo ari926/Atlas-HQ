@@ -129,7 +129,8 @@ var SUPABASE_ANON_KEY = _isProduction
   ? 'sb_publishable_5PtKRzeDXWq8mmkf093gQw_8KlXWqh9'
   : 'sb_publishable_ZUwQktaTceaiO7H2FVaJSA_m4N7QnFW';
 var supabaseClient = null;
-var supabase = null;
+/* NOTE: We use `sb` instead of `supabase` to avoid shadowing the CDN global `window.supabase` */
+var sb = null;
 var currentUser = null;
 var currentProfile = null;
 var currentStaffPerms = null;
@@ -148,7 +149,7 @@ if (!_isProduction) {
 }
 
 function initSupabaseClient() {
-  if (supabaseClient) { supabase = supabaseClient; return true; }
+  if (supabaseClient) { sb = supabaseClient; return true; }
   try {
     var lib = window.supabase;
     if (lib && lib.createClient) {
@@ -163,7 +164,7 @@ function initSupabaseClient() {
           lock: function(name, acquireTimeout, fn) { return fn(); }
         }
       });
-      supabase = supabaseClient;
+      sb = supabaseClient;
       return true;
     }
   } catch (err) { console.error('[initSupabaseClient]', err); }
@@ -238,7 +239,7 @@ function clearCache(key) {
 async function fetchProjects(force) {
   if (!force && isCacheValid('projects')) return dataCache.projects;
   var result = await resilientQuery(function() {
-    return supabase.from('hq_projects').select('*').order('created_at', { ascending: false });
+    return sb.from('hq_projects').select('*').order('created_at', { ascending: false });
   }, 'fetchProjects');
   if (result.data) { dataCache.projects = result.data; dataCache.projectsTime = Date.now(); }
   return result.data || [];
@@ -247,7 +248,7 @@ async function fetchProjects(force) {
 async function fetchTasks(force) {
   if (!force && isCacheValid('tasks')) return dataCache.tasks;
   var result = await resilientQuery(function() {
-    return supabase.from('hq_tasks').select('*').order('sort_order', { ascending: true });
+    return sb.from('hq_tasks').select('*').order('sort_order', { ascending: true });
   }, 'fetchTasks');
   if (result.data) { dataCache.tasks = result.data; dataCache.tasksTime = Date.now(); }
   return result.data || [];
@@ -256,7 +257,7 @@ async function fetchTasks(force) {
 async function fetchComplianceItems(force) {
   if (!force && isCacheValid('compliance')) return dataCache.compliance;
   var result = await resilientQuery(function() {
-    return supabase.from('hq_compliance_items').select('*').order('due_date', { ascending: true });
+    return sb.from('hq_compliance_items').select('*').order('due_date', { ascending: true });
   }, 'fetchCompliance');
   if (result.data) { dataCache.compliance = result.data; dataCache.complianceTime = Date.now(); }
   return result.data || [];
@@ -265,7 +266,7 @@ async function fetchComplianceItems(force) {
 async function fetchLicenses(force) {
   if (!force && isCacheValid('licenses')) return dataCache.licenses;
   var result = await resilientQuery(function() {
-    return supabase.from('hq_licenses').select('*').order('expiration_date', { ascending: true });
+    return sb.from('hq_licenses').select('*').order('expiration_date', { ascending: true });
   }, 'fetchLicenses');
   if (result.data) { dataCache.licenses = result.data; dataCache.licensesTime = Date.now(); }
   return result.data || [];
@@ -274,7 +275,7 @@ async function fetchLicenses(force) {
 async function fetchEmployees(force) {
   if (!force && isCacheValid('employees')) return dataCache.employees;
   var result = await resilientQuery(function() {
-    return supabase.from('hq_employees').select('*').order('last_name', { ascending: true });
+    return sb.from('hq_employees').select('*').order('last_name', { ascending: true });
   }, 'fetchEmployees');
   if (result.data) { dataCache.employees = result.data; dataCache.employeesTime = Date.now(); }
   return result.data || [];
@@ -283,7 +284,7 @@ async function fetchEmployees(force) {
 async function fetchDrivers(force) {
   if (!force && isCacheValid('drivers')) return dataCache.drivers;
   var result = await resilientQuery(function() {
-    return supabase.from('drivers').select('id, display_id, first_name, last_name, email, phone, role, hub_id, is_active, inactive_reason, created_at').order('last_name', { ascending: true });
+    return sb.from('drivers').select('id, display_id, first_name, last_name, email, phone, role, hub_id, is_active, inactive_reason, created_at').order('last_name', { ascending: true });
   }, 'fetchDrivers');
   if (result.data) { dataCache.drivers = result.data; dataCache.driversTime = Date.now(); }
   return result.data || [];
@@ -292,7 +293,7 @@ async function fetchDrivers(force) {
 async function fetchDocuments(force) {
   if (!force && isCacheValid('documents')) return dataCache.documents;
   var result = await resilientQuery(function() {
-    return supabase.from('hq_documents').select('*').order('created_at', { ascending: false });
+    return sb.from('hq_documents').select('*').order('created_at', { ascending: false });
   }, 'fetchDocuments');
   if (result.data) { dataCache.documents = result.data; dataCache.documentsTime = Date.now(); }
   return result.data || [];
@@ -301,7 +302,7 @@ async function fetchDocuments(force) {
 async function fetchFolders(force) {
   if (!force && isCacheValid('folders')) return dataCache.folders;
   var result = await resilientQuery(function() {
-    return supabase.from('hq_document_folders').select('*').order('name', { ascending: true });
+    return sb.from('hq_document_folders').select('*').order('name', { ascending: true });
   }, 'fetchFolders');
   if (result.data) { dataCache.folders = result.data; dataCache.foldersTime = Date.now(); }
   return result.data || [];
@@ -310,7 +311,7 @@ async function fetchFolders(force) {
 async function fetchStaffList(force) {
   if (!force && isCacheValid('staffList')) return dataCache.staffList;
   var result = await resilientQuery(function() {
-    return supabase.from('corporate_staff').select('id, email, first_name, last_name, permission_level, is_active, auth_user_id').eq('is_active', true);
+    return sb.from('corporate_staff').select('id, email, first_name, last_name, permission_level, is_active, auth_user_id').eq('is_active', true);
   }, 'fetchStaffList');
   if (result.data) { dataCache.staffList = result.data; dataCache.staffListTime = Date.now(); }
   return result.data || [];
@@ -319,8 +320,8 @@ async function fetchStaffList(force) {
 /* ─── Auth ─── */
 async function initAuth() {
   try {
-    if (!supabase) { showLogin(); return; }
-    var sessionResult = await supabase.auth.getSession();
+    if (!sb) { showLogin(); return; }
+    var sessionResult = await sb.auth.getSession();
     var session = sessionResult.data ? sessionResult.data.session : null;
 
     if (!session) {
@@ -329,7 +330,7 @@ async function initAuth() {
         try {
           var parsed = JSON.parse(storedSession);
           if (parsed && parsed.access_token && parsed.refresh_token) {
-            var restoreResult = await supabase.auth.setSession({
+            var restoreResult = await sb.auth.setSession({
               access_token: parsed.access_token,
               refresh_token: parsed.refresh_token
             });
@@ -354,7 +355,7 @@ async function initAuth() {
       showLogin();
     }
 
-    supabase.auth.onAuthStateChange(async function(event, session) {
+    sb.auth.onAuthStateChange(async function(event, session) {
       try {
         if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') && session) {
           currentUser = session.user;
@@ -384,7 +385,7 @@ async function initAuth() {
       try {
         var parsed = JSON.parse(backup);
         if (parsed && parsed.access_token && parsed.refresh_token) {
-          var restoreResult = await supabase.auth.setSession(parsed);
+          var restoreResult = await sb.auth.setSession(parsed);
           if (restoreResult.data && restoreResult.data.session) {
             currentUser = restoreResult.data.session.user;
             isAuthenticated = true;
@@ -403,7 +404,7 @@ async function loadUserProfile() {
   if (!currentUser) return;
   try {
     var result = await resilientQuery(function() {
-      return supabase.from('profiles').select('id, email, full_name, role, phone, created_at').eq('id', currentUser.id).single();
+      return sb.from('profiles').select('id, email, full_name, role, phone, created_at').eq('id', currentUser.id).single();
     }, 'loadUserProfile');
     if (result.data) currentProfile = result.data;
   } catch (err) { console.error('[loadUserProfile]', err); }
@@ -411,19 +412,19 @@ async function loadUserProfile() {
   /* Load corporate staff permissions */
   try {
     var staffResult = await resilientQuery(function() {
-      return supabase.from('corporate_staff').select('*').eq('auth_user_id', currentUser.id).eq('is_active', true).single();
+      return sb.from('corporate_staff').select('*').eq('auth_user_id', currentUser.id).eq('is_active', true).single();
     }, 'loadStaffPerms');
     if (staffResult.data && !staffResult.error) {
       currentStaffPerms = staffResult.data;
     } else {
       var emailMatch = await resilientQuery(function() {
-        return supabase.from('corporate_staff').select('*').ilike('email', currentUser.email || '').eq('is_active', true).single();
+        return sb.from('corporate_staff').select('*').ilike('email', currentUser.email || '').eq('is_active', true).single();
       }, 'loadStaffPerms:email');
       if (emailMatch.data && !emailMatch.error) {
         currentStaffPerms = emailMatch.data;
         if (!emailMatch.data.auth_user_id) {
           try {
-            await resilientWrite(function() { return supabase.from('corporate_staff').update({ auth_user_id: currentUser.id }).eq('id', emailMatch.data.id); }, 'linkStaff');
+            await resilientWrite(function() { return sb.from('corporate_staff').update({ auth_user_id: currentUser.id }).eq('id', emailMatch.data.id); }, 'linkStaff');
           } catch(e) {}
         }
       } else { currentStaffPerms = null; }
@@ -470,7 +471,7 @@ async function handleAuthSubmit(event) {
   if (btn) { btn.disabled = true; btn.textContent = 'Signing in...'; }
 
   try {
-    var result = await supabase.auth.signInWithPassword({ email: email, password: password });
+    var result = await sb.auth.signInWithPassword({ email: email, password: password });
     if (result.error) {
       if (errorEl) { errorEl.textContent = result.error.message || 'Sign in failed.'; errorEl.style.display = 'block'; }
     }
@@ -482,7 +483,7 @@ async function handleAuthSubmit(event) {
 }
 
 async function signOut() {
-  try { await supabase.auth.signOut(); } catch(e) {}
+  try { await sb.auth.signOut(); } catch(e) {}
   currentUser = null;
   currentProfile = null;
   currentStaffPerms = null;
@@ -687,6 +688,6 @@ function formatFileSize(bytes) {
 
 /* ─── Init on DOM Ready ─── */
 document.addEventListener('DOMContentLoaded', function() {
-  if (!supabase) initSupabaseClient();
+  if (!sb) initSupabaseClient();
   initAuth();
 });

@@ -149,9 +149,9 @@ async function saveEmployee(employeeId) {
   };
   try {
     if (employeeId) {
-      await resilientWrite(function() { return supabase.from('hq_employees').update(data).eq('id', employeeId); }, 'updateEmployee');
+      await resilientWrite(function() { return sb.from('hq_employees').update(data).eq('id', employeeId); }, 'updateEmployee');
     } else {
-      await resilientWrite(function() { return supabase.from('hq_employees').insert(data); }, 'insertEmployee');
+      await resilientWrite(function() { return sb.from('hq_employees').insert(data); }, 'insertEmployee');
     }
     clearCache('employees');
     closeModal('hq-modal');
@@ -163,7 +163,7 @@ async function saveEmployee(employeeId) {
 function deleteEmployee(employeeId) {
   customConfirm('Delete this employee record?', async function() {
     try {
-      await resilientWrite(function() { return supabase.from('hq_employees').delete().eq('id', employeeId); }, 'deleteEmployee');
+      await resilientWrite(function() { return sb.from('hq_employees').delete().eq('id', employeeId); }, 'deleteEmployee');
       clearCache('employees');
       closeModal('hq-modal');
       renderHR();
