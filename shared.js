@@ -1,0 +1,692 @@
+/* ═══════════════════════════════════════════
+   ATLAS HQ — shared.js
+   Auth, Supabase config, SPA routing, utilities
+   ═══════════════════════════════════════════ */
+
+/* ─── Global Error Boundary ─── */
+window.addEventListener('unhandledrejection', function(event) {
+  var msg = (event.reason && event.reason.message) ? event.reason.message : String(event.reason || 'Unknown error');
+  if (msg.indexOf('LockManager') !== -1 || msg.indexOf('SecurityError') !== -1) return;
+  console.error('[Global] Unhandled promise rejection:', event.reason);
+  if (typeof showToast === 'function') {
+    showToast('Something went wrong — try refreshing the page.', 'error');
+  }
+  event.preventDefault();
+});
+window.addEventListener('error', function(event) {
+  var msg = event.message || '';
+  if (msg.indexOf('LockManager') !== -1 || msg.indexOf('SecurityError') !== -1) return;
+  if (msg.indexOf('ResizeObserver') !== -1) return;
+  console.error('[Global] Uncaught error:', msg, event.filename, event.lineno);
+  if (typeof showToast === 'function') {
+    showToast('Something went wrong — try refreshing the page.', 'error');
+  }
+});
+
+/* ─── HTML Escaping (XSS protection) ─── */
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/* ─── Form Validation ─── */
+function validateField(inputEl, rule) {
+  if (!inputEl) return true;
+  var val = (inputEl.value || '').trim();
+  var valid = true;
+  if (rule === 'required') { valid = val.length > 0; }
+  else if (rule === 'email') { valid = val.length === 0 || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val); }
+  else if (rule === 'phone') { valid = val.length === 0 || /^[\d\s\-\+\(\)\.]{7,20}$/.test(val); }
+  else if (rule === 'number') { valid = val.length === 0 || !isNaN(Number(val)); }
+  else if (rule && rule.indexOf('minLength:') === 0) { valid = val.length === 0 || val.length >= parseInt(rule.split(':')[1], 10); }
+  inputEl.style.borderColor = valid ? '' : 'var(--color-error)';
+  return valid;
+}
+function validateForm(fieldRules) {
+  var allValid = true;
+  for (var i = 0; i < fieldRules.length; i++) {
+    if (!validateField(fieldRules[i].el, fieldRules[i].rule)) allValid = false;
+  }
+  return allValid;
+}
+
+/* ─── Navigator Locks Polyfill ─── */
+if (!navigator.locks || typeof navigator.locks.request !== 'function') {
+  navigator.locks = {
+    request: function(name, opts, callback) {
+      if (typeof opts === 'function') { callback = opts; }
+      return Promise.resolve(callback({ name: name, mode: 'exclusive' }));
+    },
+    query: function() { return Promise.resolve({ held: [], pending: [] }); }
+  };
+}
+(function() {
+  var origRequest = navigator.locks.request;
+  function fallback(args) {
+    var callback = args[args.length - 1];
+    if (typeof callback === 'function') return Promise.resolve(callback({ name: args[0], mode: 'exclusive' }));
+    return Promise.resolve();
+  }
+  navigator.locks.request = function() {
+    var args = Array.prototype.slice.call(arguments);
+    try {
+      var result = origRequest.apply(navigator.locks, args);
+      if (result && typeof result.catch === 'function') return result.catch(function() { return fallback(args); });
+      return result;
+    } catch (e) { return fallback(args); }
+  };
+})();
+
+/* ─── CustomStorage (localStorage + window.name fallback) ─── */
+var CustomStorage = (function() {
+  var memStore = {};
+  function _ls() {
+    try { localStorage.setItem('_t', '1'); localStorage.removeItem('_t'); return true; } catch(e) { return false; }
+  }
+  return {
+    getItem: function(key) {
+      if (_ls()) { try { return localStorage.getItem(key); } catch(e) {} }
+      if (memStore[key] !== undefined) return memStore[key];
+      try {
+        var wn = window.name ? JSON.parse(window.name) : {};
+        return wn[key] || null;
+      } catch(e) { return null; }
+    },
+    setItem: function(key, val) {
+      if (_ls()) { try { localStorage.setItem(key, val); } catch(e) {} }
+      memStore[key] = val;
+      try {
+        var wn = {};
+        try { wn = window.name ? JSON.parse(window.name) : {}; } catch(e) {}
+        wn[key] = val;
+        window.name = JSON.stringify(wn);
+      } catch(e) {}
+    },
+    removeItem: function(key) {
+      if (_ls()) { try { localStorage.removeItem(key); } catch(e) {} }
+      delete memStore[key];
+      try {
+        var wn = {};
+        try { wn = window.name ? JSON.parse(window.name) : {}; } catch(e) {}
+        delete wn[key];
+        window.name = JSON.stringify(wn);
+      } catch(e) {}
+    }
+  };
+})();
+
+/* ─── Supabase Config (Dev/Prod switching) ─── */
+var _isProduction = (window.location.hostname === 'hq.talaria.com');
+var SUPABASE_URL = _isProduction
+  ? 'https://buqopylxhqdiikzqctkb.supabase.co'
+  : 'https://dutvbquoyjtoctjstbmv.supabase.co';
+var SUPABASE_ANON_KEY = _isProduction
+  ? 'sb_publishable_5PtKRzeDXWq8mmkf093gQw_8KlXWqh9'
+  : 'sb_publishable_ZUwQktaTceaiO7H2FVaJSA_m4N7QnFW';
+var supabaseClient = null;
+var supabase = null;
+var currentUser = null;
+var currentProfile = null;
+var currentStaffPerms = null;
+var isAuthenticated = false;
+
+/* Dev banner */
+if (!_isProduction) {
+  document.addEventListener('DOMContentLoaded', function() {
+    var banner = document.createElement('div');
+    banner.id = 'dev-env-banner';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#f59e0b;color:#000;text-align:center;padding:4px;font-size:12px;font-weight:600;letter-spacing:0.5px;';
+    banner.textContent = 'DEV ENVIRONMENT — Database: dutvbquoyjtoctjstbmv';
+    document.body.prepend(banner);
+    document.body.style.paddingTop = '28px';
+  });
+}
+
+function initSupabaseClient() {
+  if (supabaseClient) { supabase = supabaseClient; return true; }
+  try {
+    var lib = window.supabase;
+    if (lib && lib.createClient) {
+      supabaseClient = lib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+          storage: CustomStorage,
+          storageKey: 'atlas-hq-auth-token',
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          flowType: 'implicit',
+          lock: function(name, acquireTimeout, fn) { return fn(); }
+        }
+      });
+      supabase = supabaseClient;
+      return true;
+    }
+  } catch (err) { console.error('[initSupabaseClient]', err); }
+  return false;
+}
+initSupabaseClient();
+
+/* ─── Resilient Query Layer ─── */
+var _QUERY_TIMEOUT = 15000;
+var DATA_CACHE_TTL = 60000;
+
+function isLockManagerError(err) {
+  if (!err) return false;
+  var msg = err.message || String(err);
+  return msg.indexOf('LockManager') !== -1 || msg.indexOf('SecurityError') !== -1;
+}
+
+function supabaseWithTimeout(queryFn, timeoutMs) {
+  return new Promise(function(resolve, reject) {
+    var timer = setTimeout(function() { reject(new Error('Query timed out after ' + timeoutMs + 'ms')); }, timeoutMs || _QUERY_TIMEOUT);
+    queryFn().then(function(result) { clearTimeout(timer); resolve(result); })
+      .catch(function(err) { clearTimeout(timer); reject(err); });
+  });
+}
+
+async function resilientQuery(queryFn, label, retries) {
+  retries = retries || 2;
+  var lastErr;
+  for (var attempt = 0; attempt <= retries; attempt++) {
+    try {
+      var result = await supabaseWithTimeout(queryFn, _QUERY_TIMEOUT);
+      return result;
+    } catch (err) {
+      lastErr = err;
+      if (isLockManagerError(err)) {
+        console.warn('[' + (label || 'query') + '] LockManager error, retrying...');
+        await new Promise(function(r) { setTimeout(r, 500); });
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
+async function resilientWrite(writeFn, label) {
+  return resilientQuery(writeFn, label, 1);
+}
+
+/* ─── Data Cache ─── */
+var dataCache = {
+  projects: null, projectsTime: 0,
+  tasks: null, tasksTime: 0,
+  compliance: null, complianceTime: 0,
+  licenses: null, licensesTime: 0,
+  employees: null, employeesTime: 0,
+  documents: null, documentsTime: 0,
+  folders: null, foldersTime: 0,
+  drivers: null, driversTime: 0,
+  staffList: null, staffListTime: 0
+};
+
+function isCacheValid(key) {
+  return dataCache[key] && (Date.now() - dataCache[key + 'Time']) < DATA_CACHE_TTL;
+}
+function clearCache(key) {
+  if (key) { dataCache[key] = null; dataCache[key + 'Time'] = 0; }
+  else { for (var k in dataCache) { dataCache[k] = (k.indexOf('Time') !== -1) ? 0 : null; } }
+}
+
+/* ─── Data Fetchers ─── */
+async function fetchProjects(force) {
+  if (!force && isCacheValid('projects')) return dataCache.projects;
+  var result = await resilientQuery(function() {
+    return supabase.from('hq_projects').select('*').order('created_at', { ascending: false });
+  }, 'fetchProjects');
+  if (result.data) { dataCache.projects = result.data; dataCache.projectsTime = Date.now(); }
+  return result.data || [];
+}
+
+async function fetchTasks(force) {
+  if (!force && isCacheValid('tasks')) return dataCache.tasks;
+  var result = await resilientQuery(function() {
+    return supabase.from('hq_tasks').select('*').order('sort_order', { ascending: true });
+  }, 'fetchTasks');
+  if (result.data) { dataCache.tasks = result.data; dataCache.tasksTime = Date.now(); }
+  return result.data || [];
+}
+
+async function fetchComplianceItems(force) {
+  if (!force && isCacheValid('compliance')) return dataCache.compliance;
+  var result = await resilientQuery(function() {
+    return supabase.from('hq_compliance_items').select('*').order('due_date', { ascending: true });
+  }, 'fetchCompliance');
+  if (result.data) { dataCache.compliance = result.data; dataCache.complianceTime = Date.now(); }
+  return result.data || [];
+}
+
+async function fetchLicenses(force) {
+  if (!force && isCacheValid('licenses')) return dataCache.licenses;
+  var result = await resilientQuery(function() {
+    return supabase.from('hq_licenses').select('*').order('expiration_date', { ascending: true });
+  }, 'fetchLicenses');
+  if (result.data) { dataCache.licenses = result.data; dataCache.licensesTime = Date.now(); }
+  return result.data || [];
+}
+
+async function fetchEmployees(force) {
+  if (!force && isCacheValid('employees')) return dataCache.employees;
+  var result = await resilientQuery(function() {
+    return supabase.from('hq_employees').select('*').order('last_name', { ascending: true });
+  }, 'fetchEmployees');
+  if (result.data) { dataCache.employees = result.data; dataCache.employeesTime = Date.now(); }
+  return result.data || [];
+}
+
+async function fetchDrivers(force) {
+  if (!force && isCacheValid('drivers')) return dataCache.drivers;
+  var result = await resilientQuery(function() {
+    return supabase.from('drivers').select('id, display_id, first_name, last_name, email, phone, role, hub_id, is_active, inactive_reason, created_at').order('last_name', { ascending: true });
+  }, 'fetchDrivers');
+  if (result.data) { dataCache.drivers = result.data; dataCache.driversTime = Date.now(); }
+  return result.data || [];
+}
+
+async function fetchDocuments(force) {
+  if (!force && isCacheValid('documents')) return dataCache.documents;
+  var result = await resilientQuery(function() {
+    return supabase.from('hq_documents').select('*').order('created_at', { ascending: false });
+  }, 'fetchDocuments');
+  if (result.data) { dataCache.documents = result.data; dataCache.documentsTime = Date.now(); }
+  return result.data || [];
+}
+
+async function fetchFolders(force) {
+  if (!force && isCacheValid('folders')) return dataCache.folders;
+  var result = await resilientQuery(function() {
+    return supabase.from('hq_document_folders').select('*').order('name', { ascending: true });
+  }, 'fetchFolders');
+  if (result.data) { dataCache.folders = result.data; dataCache.foldersTime = Date.now(); }
+  return result.data || [];
+}
+
+async function fetchStaffList(force) {
+  if (!force && isCacheValid('staffList')) return dataCache.staffList;
+  var result = await resilientQuery(function() {
+    return supabase.from('corporate_staff').select('id, email, first_name, last_name, permission_level, is_active, auth_user_id').eq('is_active', true);
+  }, 'fetchStaffList');
+  if (result.data) { dataCache.staffList = result.data; dataCache.staffListTime = Date.now(); }
+  return result.data || [];
+}
+
+/* ─── Auth ─── */
+async function initAuth() {
+  try {
+    if (!supabase) { showLogin(); return; }
+    var sessionResult = await supabase.auth.getSession();
+    var session = sessionResult.data ? sessionResult.data.session : null;
+
+    if (!session) {
+      var storedSession = CustomStorage.getItem('atlas-hq-auth-token');
+      if (storedSession) {
+        try {
+          var parsed = JSON.parse(storedSession);
+          if (parsed && parsed.access_token && parsed.refresh_token) {
+            var restoreResult = await supabase.auth.setSession({
+              access_token: parsed.access_token,
+              refresh_token: parsed.refresh_token
+            });
+            if (restoreResult.data && restoreResult.data.session) session = restoreResult.data.session;
+          }
+        } catch(e) { CustomStorage.removeItem('atlas-hq-auth-token'); }
+      }
+    }
+
+    if (session) {
+      currentUser = session.user;
+      isAuthenticated = true;
+      try {
+        CustomStorage.setItem('atlas-hq-session-backup', JSON.stringify({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token
+        }));
+      } catch(e) {}
+      await loadUserProfile();
+      showApp();
+    } else {
+      showLogin();
+    }
+
+    supabase.auth.onAuthStateChange(async function(event, session) {
+      try {
+        if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') && session) {
+          currentUser = session.user;
+          isAuthenticated = true;
+          try {
+            CustomStorage.setItem('atlas-hq-session-backup', JSON.stringify({
+              access_token: session.access_token,
+              refresh_token: session.refresh_token
+            }));
+          } catch(e) {}
+          try { await loadUserProfile(); } catch (e) {}
+          showApp();
+        } else if (event === 'SIGNED_OUT') {
+          currentUser = null;
+          currentProfile = null;
+          currentStaffPerms = null;
+          isAuthenticated = false;
+          CustomStorage.removeItem('atlas-hq-session-backup');
+          showLogin();
+        }
+      } catch (err) { console.error('Auth state change error:', err); }
+    });
+  } catch (err) {
+    console.error('[initAuth]', err);
+    var backup = CustomStorage.getItem('atlas-hq-session-backup');
+    if (backup) {
+      try {
+        var parsed = JSON.parse(backup);
+        if (parsed && parsed.access_token && parsed.refresh_token) {
+          var restoreResult = await supabase.auth.setSession(parsed);
+          if (restoreResult.data && restoreResult.data.session) {
+            currentUser = restoreResult.data.session.user;
+            isAuthenticated = true;
+            await loadUserProfile();
+            showApp();
+            return;
+          }
+        }
+      } catch(e) {}
+    }
+    showLogin();
+  }
+}
+
+async function loadUserProfile() {
+  if (!currentUser) return;
+  try {
+    var result = await resilientQuery(function() {
+      return supabase.from('profiles').select('id, email, full_name, role, phone, created_at').eq('id', currentUser.id).single();
+    }, 'loadUserProfile');
+    if (result.data) currentProfile = result.data;
+  } catch (err) { console.error('[loadUserProfile]', err); }
+
+  /* Load corporate staff permissions */
+  try {
+    var staffResult = await resilientQuery(function() {
+      return supabase.from('corporate_staff').select('*').eq('auth_user_id', currentUser.id).eq('is_active', true).single();
+    }, 'loadStaffPerms');
+    if (staffResult.data && !staffResult.error) {
+      currentStaffPerms = staffResult.data;
+    } else {
+      var emailMatch = await resilientQuery(function() {
+        return supabase.from('corporate_staff').select('*').ilike('email', currentUser.email || '').eq('is_active', true).single();
+      }, 'loadStaffPerms:email');
+      if (emailMatch.data && !emailMatch.error) {
+        currentStaffPerms = emailMatch.data;
+        if (!emailMatch.data.auth_user_id) {
+          try {
+            await resilientWrite(function() { return supabase.from('corporate_staff').update({ auth_user_id: currentUser.id }).eq('id', emailMatch.data.id); }, 'linkStaff');
+          } catch(e) {}
+        }
+      } else { currentStaffPerms = null; }
+    }
+  } catch (e) { currentStaffPerms = null; }
+}
+
+function showLogin() {
+  var loginPage = document.getElementById('login-page');
+  var appShell = document.getElementById('app-shell');
+  if (loginPage) loginPage.style.display = 'flex';
+  if (appShell) { appShell.style.display = 'none'; appShell.classList.remove('active'); }
+}
+
+function showApp() {
+  var loginPage = document.getElementById('login-page');
+  var appShell = document.getElementById('app-shell');
+  if (loginPage) loginPage.style.display = 'none';
+  if (appShell) { appShell.style.display = 'grid'; appShell.classList.add('active'); }
+
+  /* Update user display */
+  var nameEl = document.getElementById('user-display-name');
+  var avatarEl = document.getElementById('user-avatar-text');
+  var name = (currentProfile && currentProfile.full_name) || (currentUser && currentUser.email) || 'User';
+  if (nameEl) nameEl.textContent = name.split(' ')[0];
+  if (avatarEl) avatarEl.textContent = name.charAt(0).toUpperCase();
+
+  /* Navigate to current hash or default */
+  var hash = window.location.hash.replace('#', '') || 'dashboard';
+  navigateTo(hash);
+}
+
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+  var email = document.getElementById('auth-email').value.trim();
+  var password = document.getElementById('auth-password').value;
+  var errorEl = document.getElementById('auth-error');
+  if (!email || !password) {
+    if (errorEl) { errorEl.textContent = 'Please enter email and password.'; errorEl.style.display = 'block'; }
+    return false;
+  }
+  if (errorEl) errorEl.style.display = 'none';
+  var btn = document.getElementById('auth-submit-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Signing in...'; }
+
+  try {
+    var result = await supabase.auth.signInWithPassword({ email: email, password: password });
+    if (result.error) {
+      if (errorEl) { errorEl.textContent = result.error.message || 'Sign in failed.'; errorEl.style.display = 'block'; }
+    }
+  } catch (err) {
+    if (errorEl) { errorEl.textContent = 'An error occurred. Please try again.'; errorEl.style.display = 'block'; }
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
+  return false;
+}
+
+async function signOut() {
+  try { await supabase.auth.signOut(); } catch(e) {}
+  currentUser = null;
+  currentProfile = null;
+  currentStaffPerms = null;
+  isAuthenticated = false;
+  CustomStorage.removeItem('atlas-hq-auth-token');
+  CustomStorage.removeItem('atlas-hq-session-backup');
+  clearCache();
+  showLogin();
+}
+
+/* ─── SPA Routing ─── */
+var validPages = ['dashboard', 'projects', 'compliance', 'licensing', 'hr', 'documents'];
+var _navId = 0;
+
+var _pageRenderMap = {
+  'dashboard': 'renderHQDashboard',
+  'projects': 'renderProjects',
+  'compliance': 'renderCompliance',
+  'licensing': 'renderLicensing',
+  'hr': 'renderHR',
+  'documents': 'renderDocuments'
+};
+
+function navigateTo(page) {
+  if (validPages.indexOf(page) === -1) page = 'dashboard';
+  var oldHash = window.location.hash.replace('#', '');
+  window.location.hash = page;
+  if (oldHash === page) renderPage(page);
+}
+
+async function renderPage(page) {
+  try {
+    if (validPages.indexOf(page) === -1) page = 'dashboard';
+    var myNavId = ++_navId;
+
+    /* Hide all views */
+    var views = document.querySelectorAll('.view');
+    for (var i = 0; i < views.length; i++) views[i].classList.remove('active');
+
+    /* Show target view */
+    var target = document.getElementById('view-' + page);
+    if (target) target.classList.add('active');
+
+    /* Update sidebar active state */
+    var navLinks = document.querySelectorAll('#sidebar nav a');
+    for (var j = 0; j < navLinks.length; j++) {
+      var link = navLinks[j];
+      if (link.getAttribute('data-page') === page) {
+        link.classList.add('active');
+      } else {
+        link.classList.remove('active');
+      }
+    }
+
+    if (myNavId !== _navId) return;
+
+    /* Call page render function */
+    var renderFnName = _pageRenderMap[page];
+    if (renderFnName && typeof window[renderFnName] === 'function') {
+      try { await window[renderFnName](); }
+      catch (renderErr) {
+        if (myNavId !== _navId) return;
+        console.error('Error rendering "' + page + '":', renderErr);
+        showToast('Failed to load ' + page + ' page.', 'error');
+      }
+    }
+  } catch (err) {
+    console.error('[renderPage]', err);
+    showToast('renderPage failed — please try again.', 'error');
+  }
+}
+
+window.addEventListener('hashchange', function() {
+  var hash = window.location.hash.replace('#', '') || 'dashboard';
+  if (hash === 'login') return;
+  if (!currentUser) { showLogin(); return; }
+  renderPage(hash);
+});
+
+/* ─── Toast Notifications ─── */
+var _toastDebounce = {};
+function showToast(message, type, duration) {
+  type = type || 'info';
+  duration = duration || 4000;
+  var key = type + ':' + message;
+  if (_toastDebounce[key]) return;
+  _toastDebounce[key] = true;
+  setTimeout(function() { delete _toastDebounce[key]; }, 2000);
+
+  var container = document.getElementById('toast-container');
+  if (!container) return;
+  var toast = document.createElement('div');
+  toast.className = 'toast toast-' + type;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(function() {
+    toast.classList.add('toast-removing');
+    setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 200);
+  }, duration);
+}
+
+/* ─── Custom Confirm ─── */
+function customConfirm(message, onConfirm, onCancel) {
+  var overlay = document.getElementById('custom-confirm-overlay');
+  var msgEl = document.getElementById('custom-confirm-msg');
+  if (!overlay || !msgEl) { if (confirm(message)) { if (onConfirm) onConfirm(); } else { if (onCancel) onCancel(); } return; }
+  msgEl.textContent = message;
+  overlay.style.display = 'flex';
+  var confirmBtn = document.getElementById('custom-confirm-yes');
+  var cancelBtn = document.getElementById('custom-confirm-no');
+  function cleanup() {
+    overlay.style.display = 'none';
+    if (confirmBtn) confirmBtn.onclick = null;
+    if (cancelBtn) cancelBtn.onclick = null;
+  }
+  if (confirmBtn) confirmBtn.onclick = function() { cleanup(); if (onConfirm) onConfirm(); };
+  if (cancelBtn) cancelBtn.onclick = function() { cleanup(); if (onCancel) onCancel(); };
+}
+
+/* ─── Modal Helpers ─── */
+function openModal(modalId) {
+  var el = document.getElementById(modalId);
+  if (el) el.classList.add('active');
+}
+function closeModal(modalId) {
+  var el = document.getElementById(modalId);
+  if (el) el.classList.remove('active');
+}
+
+/* ─── Date Formatting ─── */
+function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  var d = new Date(dateStr);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function formatDateTime(dateStr) {
+  if (!dateStr) return '—';
+  var d = new Date(dateStr);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' +
+    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  var now = new Date(); now.setHours(0,0,0,0);
+  var target = new Date(dateStr); target.setHours(0,0,0,0);
+  return Math.ceil((target - now) / (1000 * 60 * 60 * 24));
+}
+
+/* ─── Theme Toggle ─── */
+function toggleTheme() {
+  var current = document.documentElement.getAttribute('data-theme');
+  var next = (current === 'dark') ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('atlas-hq-theme', next); } catch(e) {}
+}
+(function() {
+  try {
+    var saved = localStorage.getItem('atlas-hq-theme');
+    if (saved) { document.documentElement.setAttribute('data-theme', saved); }
+    else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  } catch(e) {}
+})();
+
+/* ─── AI Search ─── */
+function openAISearch() {
+  var overlay = document.getElementById('ai-search-overlay');
+  if (overlay) {
+    overlay.classList.add('active');
+    var input = document.getElementById('ai-search-input');
+    if (input) { input.value = ''; input.focus(); }
+    var results = document.getElementById('ai-search-results');
+    if (results) results.innerHTML = '<div class="search-hint">Ask a question about your data or search across all modules...</div>';
+  }
+}
+function closeAISearch() {
+  var overlay = document.getElementById('ai-search-overlay');
+  if (overlay) overlay.classList.remove('active');
+}
+
+/* CMD+K shortcut */
+document.addEventListener('keydown', function(e) {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    var overlay = document.getElementById('ai-search-overlay');
+    if (overlay && overlay.classList.contains('active')) { closeAISearch(); }
+    else { openAISearch(); }
+  }
+  if (e.key === 'Escape') {
+    closeAISearch();
+  }
+});
+
+/* ─── File Size Formatter ─── */
+function formatFileSize(bytes) {
+  if (!bytes) return '—';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+/* ─── Init on DOM Ready ─── */
+document.addEventListener('DOMContentLoaded', function() {
+  if (!supabase) initSupabaseClient();
+  initAuth();
+});
