@@ -224,7 +224,10 @@ var dataCache = {
   documents: null, documentsTime: 0,
   folders: null, foldersTime: 0,
   drivers: null, driversTime: 0,
-  staffList: null, staffListTime: 0
+  staffList: null, staffListTime: 0,
+  boardGroups: null, boardGroupsTime: 0,
+  boardColumns: null, boardColumnsTime: 0,
+  taskValues: null, taskValuesTime: 0
 };
 
 function isCacheValid(key) {
@@ -315,6 +318,72 @@ async function fetchStaffList(force) {
   }, 'fetchStaffList');
   if (result.data) { dataCache.staffList = result.data; dataCache.staffListTime = Date.now(); }
   return result.data || [];
+}
+
+/* ─── Board-Specific Fetchers ─── */
+async function fetchBoardGroups(projectId, force) {
+  if (!force && isCacheValid('boardGroups') && dataCache._boardGroupsProjectId === projectId) return dataCache.boardGroups;
+  var result = await resilientQuery(function() {
+    return sb.from('hq_board_groups').select('*').eq('project_id', projectId).order('sort_order', { ascending: true });
+  }, 'fetchBoardGroups');
+  if (result.data) { dataCache.boardGroups = result.data; dataCache.boardGroupsTime = Date.now(); dataCache._boardGroupsProjectId = projectId; }
+  return result.data || [];
+}
+
+async function fetchBoardColumns(projectId, force) {
+  if (!force && isCacheValid('boardColumns') && dataCache._boardColumnsProjectId === projectId) return dataCache.boardColumns;
+  var result = await resilientQuery(function() {
+    return sb.from('hq_board_columns').select('*').eq('project_id', projectId).order('sort_order', { ascending: true });
+  }, 'fetchBoardColumns');
+  if (result.data) { dataCache.boardColumns = result.data; dataCache.boardColumnsTime = Date.now(); dataCache._boardColumnsProjectId = projectId; }
+  return result.data || [];
+}
+
+async function fetchTaskValues(taskIds, force) {
+  if (!taskIds || taskIds.length === 0) return [];
+  if (!force && isCacheValid('taskValues')) return dataCache.taskValues;
+  var result = await resilientQuery(function() {
+    return sb.from('hq_task_values').select('*').in('task_id', taskIds);
+  }, 'fetchTaskValues');
+  if (result.data) { dataCache.taskValues = result.data; dataCache.taskValuesTime = Date.now(); }
+  return result.data || [];
+}
+
+async function initBoardDefaults(projectId) {
+  /* Create 3 default groups */
+  var groups = [
+    { project_id: projectId, name: 'To Do', color: '#579bfc', sort_order: 0 },
+    { project_id: projectId, name: 'In Progress', color: '#fdab3d', sort_order: 1 },
+    { project_id: projectId, name: 'Done', color: '#00c875', sort_order: 2 }
+  ];
+  await resilientWrite(function() { return sb.from('hq_board_groups').insert(groups); }, 'initGroups');
+
+  /* Create 5 default columns */
+  var columns = [
+    { project_id: projectId, name: 'Status', type: 'status', sort_order: 0, width: 140,
+      settings: { labels: [
+        { name: 'Not Started', color: '#c4c4c4' },
+        { name: 'Working on it', color: '#fdab3d' },
+        { name: 'Stuck', color: '#e2445c' },
+        { name: 'Done', color: '#00c875' },
+        { name: 'Planning', color: '#a25ddc' },
+        { name: 'Review', color: '#0086c0' }
+      ]}},
+    { project_id: projectId, name: 'Person', type: 'person', sort_order: 1, width: 120, settings: {} },
+    { project_id: projectId, name: 'Due Date', type: 'date', sort_order: 2, width: 130, settings: {} },
+    { project_id: projectId, name: 'Priority', type: 'priority', sort_order: 3, width: 120,
+      settings: { labels: [
+        { name: 'Critical', color: '#e2445c' },
+        { name: 'High', color: '#fdab3d' },
+        { name: 'Medium', color: '#579bfc' },
+        { name: 'Low', color: '#c4c4c4' }
+      ]}},
+    { project_id: projectId, name: 'Notes', type: 'text', sort_order: 4, width: 200, settings: {} }
+  ];
+  await resilientWrite(function() { return sb.from('hq_board_columns').insert(columns); }, 'initColumns');
+
+  clearCache('boardGroups');
+  clearCache('boardColumns');
 }
 
 /* ─── Auth ─── */
