@@ -6,18 +6,18 @@
   <title>Atlas HQ — Talaria Corporate Operations</title>
   <meta name="description" content="Corporate command center for Talaria Transportation LLC">
   <meta name="theme-color" content="#01696f">
-  <link rel="stylesheet" href="./style.css?v=20260319hq2">
+  <link rel="stylesheet" href="./style.css?v=20260319hq3">
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1"></script>
   <script defer src="https://accounts.google.com/gsi/client"></script>
   <script defer src="https://apis.google.com/js/api.js"></script>
-  <script defer src="./shared.js?v=20260319hq2"></script>
-  <script defer src="./dashboard.js?v=20260319hq2"></script>
-  <script defer src="./projects.js?v=20260319hq2"></script>
-  <script defer src="./compliance.js?v=20260319hq2"></script>
-  <script defer src="./licensing.js?v=20260319hq2"></script>
-  <script defer src="./hr.js?v=20260319hq2"></script>
-  <script defer src="./documents.js?v=20260319hq2"></script>
-  <script defer src="./search.js?v=20260319hq2"></script>
+  <script defer src="./shared.js?v=20260319hq3"></script>
+  <script defer src="./dashboard.js?v=20260319hq3"></script>
+  <script defer src="./projects.js?v=20260319hq3"></script>
+  <script defer src="./compliance.js?v=20260319hq3"></script>
+  <script defer src="./licensing.js?v=20260319hq3"></script>
+  <script defer src="./hr.js?v=20260319hq3"></script>
+  <script defer src="./documents.js?v=20260319hq3"></script>
+  <script defer src="./search.js?v=20260319hq3"></script>
 </head>
 <body>
 
@@ -251,6 +251,22 @@
     </div>
 
   </main>
+</div>
+
+<!-- ═══ ITEM DETAIL SIDE PANEL ═══ -->
+<div id="board-detail-overlay" class="board-detail-overlay" onclick="closeDetailPanel()"></div>
+<div id="board-detail-panel" class="board-detail-panel">
+  <div class="board-detail-header">
+    <span class="board-detail-title" id="detail-title" contenteditable="false"></span>
+    <button class="board-detail-close" onclick="closeDetailPanel()">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="board-detail-body" id="detail-body"></div>
+  <div class="board-detail-footer" id="detail-footer">
+    <button class="btn btn-danger-ghost btn-sm" id="detail-delete-btn">Delete Item</button>
+    <button class="btn btn-primary btn-sm" onclick="closeDetailPanel()">Done</button>
+  </div>
 </div>
 
 <!-- ═══ AI SEARCH OVERLAY ═══ -->

@@ -7,6 +7,12 @@ var _boardTasks = [];
 var _boardTaskValues = {};  /* { taskId: { columnId: value } } */
 var _boardStaff = [];
 var _groupCollapsed = {};
+var _boardSearchQuery = '';
+var _boardSelectedTasks = {};  /* { taskId: true } */
+var _boardSortCol = null;
+var _boardSortDir = 'asc';
+var _boardDetailTaskId = null;
+var _saveIndicatorTimer = null;
 
 /* ─── Colors ─── */
 var GROUP_COLORS = ['#579bfc','#fdab3d','#00c875','#e2445c','#a25ddc','#0086c0','#ff642e','#c4c4c4'];
@@ -80,28 +86,76 @@ function renderBoard(container, projects) {
 
   var html = '';
 
+  /* Filter tasks by search */
+  var visibleTasks = _boardTasks;
+  if (_boardSearchQuery) {
+    var q = _boardSearchQuery.toLowerCase();
+    visibleTasks = _boardTasks.filter(function(t) {
+      if (t.title.toLowerCase().indexOf(q) !== -1) return true;
+      var vals = _boardTaskValues[t.id] || {};
+      for (var k in vals) { if ((vals[k] || '').toLowerCase().indexOf(q) !== -1) return true; }
+      return false;
+    });
+  }
+
+  /* Sort if active */
+  if (_boardSortCol) {
+    visibleTasks = visibleTasks.slice().sort(function(a, b) {
+      var va = '', vb = '';
+      if (_boardSortCol === 'title') { va = a.title; vb = b.title; }
+      else {
+        va = (_boardTaskValues[a.id] && _boardTaskValues[a.id][_boardSortCol]) || '';
+        vb = (_boardTaskValues[b.id] && _boardTaskValues[b.id][_boardSortCol]) || '';
+      }
+      var cmp = va.localeCompare(vb, undefined, { numeric: true });
+      return _boardSortDir === 'desc' ? -cmp : cmp;
+    });
+  }
+
+  var selectedCount = Object.keys(_boardSelectedTasks).length;
+
   /* Board selector */
   html += '<div class="board-selector">';
-  html += '<select class="select-field" style="width:auto;min-width:200px;" onchange="_currentProjectId=this.value;renderProjects()">';
+  html += '<select class="select-field" style="width:auto;min-width:200px;" onchange="_currentProjectId=this.value;_boardSearchQuery=\'\';_boardSelectedTasks={};_boardSortCol=null;renderProjects()">';
   projects.forEach(function(p) {
     html += '<option value="' + p.id + '"' + (p.id === _currentProjectId ? ' selected' : '') + '>' + escapeHtml(p.name) + '</option>';
   });
   html += '</select>';
   html += '<button class="btn btn-sm btn-ghost" onclick="openProjectModal(_currentProjectId)">Settings</button>';
   html += '<button class="btn btn-sm btn-primary" onclick="openProjectModal()">+ New Board</button>';
+  html += '<span class="board-save-indicator" id="board-save-status"><span class="board-save-dot"></span> Auto-saved</span>';
+  html += '</div>';
+
+  /* Search & Filter Toolbar */
+  html += '<div class="board-toolbar">';
+  html += '<div class="board-search"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+  html += '<input type="text" class="board-search-input" placeholder="Search items..." value="' + escapeHtml(_boardSearchQuery) + '" oninput="boardSearch(this.value)"></div>';
+  html += '<span class="board-item-count">' + visibleTasks.length + ' item' + (visibleTasks.length !== 1 ? 's' : '') + (_boardSearchQuery ? ' matching' : '') + '</span>';
+  html += '</div>';
+
+  /* Bulk Actions Bar */
+  html += '<div class="board-bulk-bar' + (selectedCount > 0 ? ' active' : '') + '" id="board-bulk-bar">';
+  html += '<span class="board-bulk-count">' + selectedCount + ' selected</span>';
+  html += '<button class="board-bulk-btn" onclick="bulkSetStatus()">Set Status</button>';
+  html += '<button class="board-bulk-btn" onclick="bulkMoveGroup()">Move to Group</button>';
+  html += '<button class="board-bulk-btn" onclick="bulkDuplicate()">Duplicate</button>';
+  html += '<button class="board-bulk-btn danger" onclick="bulkDelete()">Delete</button>';
+  html += '<button class="board-bulk-close" onclick="clearSelection()">&times;</button>';
   html += '</div>';
 
   /* Board wrapper */
   html += '<div class="board-wrapper">';
 
-  /* Column headers */
+  /* Column headers with sort */
   html += '<div class="board-header-row" style="grid-template-columns:' + colWidths + ';">';
-  html += '<div class="board-col-header" style="border-right:none;"></div>';
-  html += '<div class="board-col-header">Item</div>';
+  html += '<div class="board-col-header" style="border-right:none;"><input type="checkbox" onchange="toggleSelectAll(this.checked)" style="width:14px;height:14px;cursor:pointer;"></div>';
+  html += '<div class="board-col-header' + (_boardSortCol === 'title' ? ' sorted' : '') + '" onclick="toggleSort(\'title\')" style="cursor:pointer;">Item<span class="board-sort-icon">' + (_boardSortCol === 'title' ? (_boardSortDir === 'asc' ? '&#9650;' : '&#9660;') : '&#9650;') + '</span></div>';
   _boardColumns.forEach(function(col) {
-    html += '<div class="board-col-header" data-col-id="' + col.id + '">';
-    html += '<span ondblclick="editColumnName(this,\'' + col.id + '\')">' + escapeHtml(col.name) + '</span>';
-    html += '<div class="board-col-resize" onmousedown="startColumnResize(event,\'' + col.id + '\')"></div>';
+    var isSorted = _boardSortCol === col.id;
+    html += '<div class="board-col-header' + (isSorted ? ' sorted' : '') + '" data-col-id="' + col.id + '" onclick="toggleSort(\'' + col.id + '\')" style="cursor:pointer;">';
+    html += '<span ondblclick="event.stopPropagation();editColumnName(this,\'' + col.id + '\')">' + escapeHtml(col.name) + '</span>';
+    html += '<span class="board-sort-icon">' + (isSorted ? (_boardSortDir === 'asc' ? '&#9650;' : '&#9660;') : '&#9650;') + '</span>';
+    html += '<div class="board-col-resize" onmousedown="event.stopPropagation();startColumnResize(event,\'' + col.id + '\')"></div>';
     html += '</div>';
   });
   html += '<div class="board-add-col-btn" onclick="openAddColumnPicker(event)">+</div>';
@@ -109,8 +163,8 @@ function renderBoard(container, projects) {
 
   /* Groups */
   _boardGroups.forEach(function(group) {
-    var groupTasks = _boardTasks.filter(function(t) { return t.group_id === group.id; })
-      .sort(function(a, b) { return (a.sort_order || 0) - (b.sort_order || 0); });
+    var groupTasks = visibleTasks.filter(function(t) { return t.group_id === group.id; });
+    if (!_boardSortCol) groupTasks.sort(function(a, b) { return (a.sort_order || 0) - (b.sort_order || 0); });
     var isCollapsed = _groupCollapsed[group.id] === true;
 
     html += '<div class="board-group" data-group-id="' + group.id + '">';
@@ -128,9 +182,10 @@ function renderBoard(container, projects) {
 
     /* Task rows */
     groupTasks.forEach(function(task) {
-      html += '<div class="board-row" data-task-id="' + task.id + '" style="grid-template-columns:' + colWidths + ';" draggable="true" ondragstart="onTaskDragStart(event,\'' + task.id + '\')" ondragend="onTaskDragEnd(event)">';
-      html += '<div class="board-cell-checkbox"><input type="checkbox" onclick="event.stopPropagation()"></div>';
-      html += '<div class="board-cell board-cell-name" onclick="startNameEdit(this,\'' + task.id + '\')">' + escapeHtml(task.title) + '</div>';
+      var isSelected = _boardSelectedTasks[task.id];
+      html += '<div class="board-row' + (isSelected ? ' selected' : '') + '" data-task-id="' + task.id + '" style="grid-template-columns:' + colWidths + ';" draggable="true" ondragstart="onTaskDragStart(event,\'' + task.id + '\')" ondragend="onTaskDragEnd(event)" oncontextmenu="openRowContextMenu(event,\'' + task.id + '\')">';
+      html += '<div class="board-cell-checkbox"><input type="checkbox"' + (isSelected ? ' checked' : '') + ' onclick="event.stopPropagation();toggleTaskSelect(\'' + task.id + '\',this.checked)"></div>';
+      html += '<div class="board-cell board-cell-name" onclick="startNameEdit(this,\'' + task.id + '\')" ondblclick="event.stopPropagation();openDetailPanel(\'' + task.id + '\')">' + escapeHtml(task.title) + '</div>';
 
       _boardColumns.forEach(function(col) {
         var val = (_boardTaskValues[task.id] && _boardTaskValues[task.id][col.id]) || '';
@@ -139,9 +194,26 @@ function renderBoard(container, projects) {
         html += '</div>';
       });
 
-      html += '<div class="board-cell" style="border-right:none;"></div>';
+      /* Hover actions */
+      html += '<div class="board-cell" style="border-right:none;position:relative;">';
+      html += '<div class="board-row-actions">';
+      html += '<button class="board-row-action-btn" onclick="event.stopPropagation();duplicateTask(\'' + task.id + '\')" title="Duplicate">&#x2398;</button>';
+      html += '<button class="board-row-action-btn danger" onclick="event.stopPropagation();deleteTask(\'' + task.id + '\')" title="Delete">&times;</button>';
+      html += '</div></div>';
       html += '</div>';
     });
+
+    /* Summary row */
+    if (groupTasks.length > 0) {
+      html += '<div class="board-summary-row" style="grid-template-columns:' + colWidths + ';">';
+      html += '<div class="board-summary-cell"></div>';
+      html += '<div class="board-summary-cell">' + groupTasks.length + ' items</div>';
+      _boardColumns.forEach(function(col) {
+        html += '<div class="board-summary-cell">' + getSummaryForColumn(col, groupTasks) + '</div>';
+      });
+      html += '<div class="board-summary-cell"></div>';
+      html += '</div>';
+    }
 
     /* Add item row */
     html += '<div class="board-add-item" style="grid-template-columns:' + colWidths + ';">';
@@ -798,3 +870,429 @@ function deleteProject(projectId) {
     } catch (err) { showToast('Failed to delete board.', 'error'); }
   });
 }
+
+/* ═══ INTERACTIVE ENHANCEMENTS ═══ */
+
+/* ─── Search ─── */
+var _searchDebounceTimer = null;
+function boardSearch(query) {
+  clearTimeout(_searchDebounceTimer);
+  _searchDebounceTimer = setTimeout(function() {
+    _boardSearchQuery = query;
+    var container = document.getElementById('projects-content');
+    if (container) renderBoard(container, dataCache.projects || []);
+  }, 200);
+}
+
+/* ─── Sorting ─── */
+function toggleSort(colId) {
+  if (_boardSortCol === colId) {
+    if (_boardSortDir === 'asc') _boardSortDir = 'desc';
+    else { _boardSortCol = null; _boardSortDir = 'asc'; }
+  } else {
+    _boardSortCol = colId;
+    _boardSortDir = 'asc';
+  }
+  var container = document.getElementById('projects-content');
+  if (container) renderBoard(container, dataCache.projects || []);
+}
+
+/* ─── Selection ─── */
+function toggleTaskSelect(taskId, checked) {
+  if (checked) _boardSelectedTasks[taskId] = true;
+  else delete _boardSelectedTasks[taskId];
+  updateBulkBar();
+  /* Update row highlight */
+  var row = document.querySelector('.board-row[data-task-id="' + taskId + '"]');
+  if (row) row.classList.toggle('selected', checked);
+}
+
+function toggleSelectAll(checked) {
+  _boardSelectedTasks = {};
+  if (checked) {
+    _boardTasks.forEach(function(t) { if (t.project_id === _currentProjectId) _boardSelectedTasks[t.id] = true; });
+  }
+  var checkboxes = document.querySelectorAll('.board-row input[type="checkbox"]');
+  for (var i = 0; i < checkboxes.length; i++) checkboxes[i].checked = checked;
+  var rows = document.querySelectorAll('.board-row');
+  for (var j = 0; j < rows.length; j++) rows[j].classList.toggle('selected', checked);
+  updateBulkBar();
+}
+
+function clearSelection() {
+  _boardSelectedTasks = {};
+  var checkboxes = document.querySelectorAll('.board-row input[type="checkbox"], .board-header-row input[type="checkbox"]');
+  for (var i = 0; i < checkboxes.length; i++) checkboxes[i].checked = false;
+  var rows = document.querySelectorAll('.board-row');
+  for (var j = 0; j < rows.length; j++) rows[j].classList.remove('selected');
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  var bar = document.getElementById('board-bulk-bar');
+  var count = Object.keys(_boardSelectedTasks).length;
+  if (bar) {
+    bar.classList.toggle('active', count > 0);
+    var countEl = bar.querySelector('.board-bulk-count');
+    if (countEl) countEl.textContent = count + ' selected';
+  }
+}
+
+/* ─── Bulk Actions ─── */
+function bulkDelete() {
+  var ids = Object.keys(_boardSelectedTasks);
+  if (ids.length === 0) return;
+  customConfirm('Delete ' + ids.length + ' item' + (ids.length > 1 ? 's' : '') + '? This cannot be undone.', async function() {
+    try {
+      showSaveStatus('saving');
+      for (var i = 0; i < ids.length; i++) {
+        await resilientWrite(function() { return sb.from('hq_tasks').delete().eq('id', ids[i]); }, 'bulkDelete');
+      }
+      _boardSelectedTasks = {};
+      clearCache('tasks');
+      clearCache('taskValues');
+      renderProjects();
+      showToast(ids.length + ' items deleted.', 'success');
+      showSaveStatus('saved');
+    } catch (err) { showToast('Failed to delete items.', 'error'); }
+  });
+}
+
+function bulkDuplicate() {
+  var ids = Object.keys(_boardSelectedTasks);
+  if (ids.length === 0) return;
+  ids.forEach(function(id) { duplicateTask(id); });
+  _boardSelectedTasks = {};
+}
+
+function bulkMoveGroup() {
+  closeAllPickers();
+  var ids = Object.keys(_boardSelectedTasks);
+  if (ids.length === 0) return;
+  var picker = document.createElement('div');
+  picker.className = 'board-picker';
+  picker.style.position = 'fixed';
+  picker.style.top = '50%';
+  picker.style.left = '50%';
+  picker.style.transform = 'translate(-50%,-50%)';
+  var html = '<div style="padding:0.5rem 0.75rem;font-size:var(--text-xs);font-weight:600;color:var(--color-tx-muted);">MOVE ' + ids.length + ' ITEMS TO:</div>';
+  _boardGroups.forEach(function(g) {
+    html += '<div class="board-picker-option" onclick="executeBulkMove(\'' + g.id + '\')">';
+    html += '<div class="board-picker-dot" style="background:' + g.color + ';"></div>';
+    html += '<span>' + escapeHtml(g.name) + '</span></div>';
+  });
+  picker.innerHTML = html;
+  document.body.appendChild(picker);
+  setTimeout(function() {
+    document.addEventListener('click', function handler(e) {
+      if (!picker.contains(e.target)) { picker.remove(); document.removeEventListener('click', handler); }
+    });
+  }, 10);
+}
+
+async function executeBulkMove(groupId) {
+  closeAllPickers();
+  var ids = Object.keys(_boardSelectedTasks);
+  try {
+    showSaveStatus('saving');
+    await resilientWrite(function() {
+      return sb.from('hq_tasks').update({ group_id: groupId, updated_at: new Date().toISOString() }).in('id', ids);
+    }, 'bulkMove');
+    _boardSelectedTasks = {};
+    clearCache('tasks');
+    renderProjects();
+    showToast(ids.length + ' items moved.', 'success');
+    showSaveStatus('saved');
+  } catch (err) { showToast('Failed to move items.', 'error'); }
+}
+
+function bulkSetStatus() {
+  closeAllPickers();
+  var ids = Object.keys(_boardSelectedTasks);
+  if (ids.length === 0) return;
+  /* Find first status column */
+  var statusCol = _boardColumns.find(function(c) { return c.type === 'status'; });
+  if (!statusCol) { showToast('No status column on this board.', 'error'); return; }
+  var labels = (statusCol.settings && statusCol.settings.labels) || [];
+
+  var picker = document.createElement('div');
+  picker.className = 'board-picker';
+  picker.style.position = 'fixed';
+  picker.style.top = '50%';
+  picker.style.left = '50%';
+  picker.style.transform = 'translate(-50%,-50%)';
+  var html = '<div style="padding:0.5rem 0.75rem;font-size:var(--text-xs);font-weight:600;color:var(--color-tx-muted);">SET STATUS FOR ' + ids.length + ' ITEMS:</div>';
+  labels.forEach(function(l) {
+    html += '<div class="board-picker-option" onclick="executeBulkStatus(\'' + statusCol.id + '\',\'' + escapeHtml(l.name) + '\')">';
+    html += '<div class="board-picker-dot" style="background:' + l.color + ';"></div>';
+    html += '<span>' + escapeHtml(l.name) + '</span></div>';
+  });
+  picker.innerHTML = html;
+  document.body.appendChild(picker);
+  setTimeout(function() {
+    document.addEventListener('click', function handler(e) {
+      if (!picker.contains(e.target)) { picker.remove(); document.removeEventListener('click', handler); }
+    });
+  }, 10);
+}
+
+async function executeBulkStatus(colId, value) {
+  closeAllPickers();
+  var ids = Object.keys(_boardSelectedTasks);
+  try {
+    showSaveStatus('saving');
+    for (var i = 0; i < ids.length; i++) {
+      await saveCellValue(ids[i], colId, value);
+    }
+    _boardSelectedTasks = {};
+    clearCache('taskValues');
+    renderProjects();
+    showToast(ids.length + ' items updated.', 'success');
+    showSaveStatus('saved');
+  } catch (err) { showToast('Failed to update items.', 'error'); }
+}
+
+/* ─── Row Context Menu ─── */
+function openRowContextMenu(event, taskId) {
+  event.preventDefault();
+  event.stopPropagation();
+  closeAllPickers();
+  var task = _boardTasks.find(function(t) { return t.id === taskId; });
+  if (!task) return;
+
+  var menu = document.createElement('div');
+  menu.className = 'board-context-menu';
+  var html = '<div class="board-context-item" onclick="closeAllPickers();openDetailPanel(\'' + taskId + '\')">Open Item</div>';
+  html += '<div class="board-context-item" onclick="closeAllPickers();duplicateTask(\'' + taskId + '\')">Duplicate</div>';
+  html += '<div class="board-context-divider"></div>';
+  html += '<div style="padding:0.25rem 0.75rem;font-size:var(--text-xs);color:var(--color-tx-faint);">Move to</div>';
+  _boardGroups.forEach(function(g) {
+    html += '<div class="board-context-item" onclick="closeAllPickers();moveTaskToGroup(\'' + taskId + '\',\'' + g.id + '\')">';
+    html += '<div class="board-picker-dot" style="background:' + g.color + ';width:8px;height:8px;"></div>' + escapeHtml(g.name) + '</div>';
+  });
+  html += '<div class="board-context-divider"></div>';
+  html += '<div class="board-context-item danger" onclick="closeAllPickers();deleteTask(\'' + taskId + '\')">Delete</div>';
+  menu.innerHTML = html;
+  document.body.appendChild(menu);
+  menu.style.left = event.clientX + 'px';
+  menu.style.top = event.clientY + 'px';
+  /* Keep within viewport */
+  requestAnimationFrame(function() {
+    var r = menu.getBoundingClientRect();
+    if (r.right > window.innerWidth - 8) menu.style.left = (window.innerWidth - r.width - 8) + 'px';
+    if (r.bottom > window.innerHeight - 8) menu.style.top = (window.innerHeight - r.height - 8) + 'px';
+  });
+  setTimeout(function() {
+    document.addEventListener('click', function handler() { menu.remove(); document.removeEventListener('click', handler); });
+  }, 10);
+}
+
+/* ─── Duplicate Task ─── */
+async function duplicateTask(taskId) {
+  var task = _boardTasks.find(function(t) { return t.id === taskId; });
+  if (!task) return;
+  try {
+    showSaveStatus('saving');
+    var result = await resilientWrite(function() {
+      return sb.from('hq_tasks').insert({
+        project_id: task.project_id,
+        group_id: task.group_id,
+        title: task.title + ' (copy)',
+        status: task.status,
+        sort_order: (task.sort_order || 0) + 1
+      }).select('id').single();
+    }, 'duplicateTask');
+    /* Copy cell values */
+    if (result && result.data && _boardTaskValues[taskId]) {
+      var vals = _boardTaskValues[taskId];
+      var inserts = [];
+      for (var colId in vals) {
+        if (vals[colId]) inserts.push({ task_id: result.data.id, column_id: colId, value: vals[colId] });
+      }
+      if (inserts.length > 0) {
+        await resilientWrite(function() { return sb.from('hq_task_values').insert(inserts); }, 'dupValues');
+      }
+    }
+    clearCache('tasks');
+    clearCache('taskValues');
+    renderProjects();
+    showToast('Item duplicated.', 'success');
+    showSaveStatus('saved');
+  } catch (err) { showToast('Failed to duplicate.', 'error'); }
+}
+
+/* ─── Delete Task ─── */
+async function deleteTask(taskId) {
+  customConfirm('Delete this item?', async function() {
+    try {
+      showSaveStatus('saving');
+      /* Animate removal */
+      var row = document.querySelector('.board-row[data-task-id="' + taskId + '"]');
+      if (row) row.classList.add('board-row-removing');
+      setTimeout(async function() {
+        await resilientWrite(function() { return sb.from('hq_tasks').delete().eq('id', taskId); }, 'deleteTask');
+        clearCache('tasks');
+        clearCache('taskValues');
+        delete _boardSelectedTasks[taskId];
+        renderProjects();
+        showToast('Item deleted.', 'success');
+        showSaveStatus('saved');
+      }, 200);
+    } catch (err) { showToast('Failed to delete.', 'error'); }
+  });
+}
+
+/* ─── Item Detail Side Panel ─── */
+function openDetailPanel(taskId) {
+  _boardDetailTaskId = taskId;
+  var task = _boardTasks.find(function(t) { return t.id === taskId; });
+  if (!task) return;
+
+  var titleEl = document.getElementById('detail-title');
+  if (titleEl) {
+    titleEl.textContent = task.title;
+    titleEl.contentEditable = 'true';
+    titleEl.onblur = function() { saveTaskName(taskId, titleEl.textContent.trim(), titleEl); };
+    titleEl.onkeydown = function(e) { if (e.key === 'Enter') { e.preventDefault(); titleEl.blur(); } };
+  }
+
+  var body = document.getElementById('detail-body');
+  if (body) {
+    var html = '';
+    /* Column fields */
+    _boardColumns.forEach(function(col) {
+      var val = (_boardTaskValues[taskId] && _boardTaskValues[taskId][col.id]) || '';
+      html += '<div class="board-detail-field">';
+      html += '<div class="board-detail-label">' + escapeHtml(col.name) + '</div>';
+      html += '<div class="board-detail-value" data-col-id="' + col.id + '" data-task-id="' + taskId + '">';
+      html += renderCellContent(task, col, val);
+      html += '</div></div>';
+    });
+
+    /* Description/Notes section */
+    html += '<div class="board-detail-section">';
+    html += '<div class="board-detail-section-title">Description</div>';
+    var desc = task.description || '';
+    html += '<textarea class="board-detail-update-input" placeholder="Add notes or description..." onblur="saveTaskDescription(\'' + taskId + '\',this.value)">' + escapeHtml(desc) + '</textarea>';
+    html += '</div>';
+
+    /* Metadata */
+    html += '<div class="board-detail-section">';
+    html += '<div class="board-detail-section-title">Details</div>';
+    html += '<div class="board-detail-field"><div class="board-detail-label">Created</div><div class="board-detail-value" style="color:var(--color-tx-muted);">' + formatDate(task.created_at) + '</div></div>';
+    if (task.updated_at) {
+      html += '<div class="board-detail-field"><div class="board-detail-label">Last Updated</div><div class="board-detail-value" style="color:var(--color-tx-muted);">' + formatDateTime(task.updated_at) + '</div></div>';
+    }
+    html += '</div>';
+
+    body.innerHTML = html;
+  }
+
+  /* Delete button */
+  var delBtn = document.getElementById('detail-delete-btn');
+  if (delBtn) delBtn.onclick = function() { closeDetailPanel(); deleteTask(taskId); };
+
+  /* Open panel */
+  var panel = document.getElementById('board-detail-panel');
+  var overlay = document.getElementById('board-detail-overlay');
+  if (panel) panel.classList.add('open');
+  if (overlay) overlay.classList.add('open');
+}
+
+function closeDetailPanel() {
+  _boardDetailTaskId = null;
+  var panel = document.getElementById('board-detail-panel');
+  var overlay = document.getElementById('board-detail-overlay');
+  if (panel) panel.classList.remove('open');
+  if (overlay) overlay.classList.remove('open');
+}
+
+async function saveTaskDescription(taskId, desc) {
+  try {
+    await resilientWrite(function() {
+      return sb.from('hq_tasks').update({ description: desc, updated_at: new Date().toISOString() }).eq('id', taskId);
+    }, 'saveDesc');
+    showSaveStatus('saved');
+  } catch (err) { showToast('Failed to save description.', 'error'); }
+}
+
+/* ─── Column Summary ─── */
+function getSummaryForColumn(col, tasks) {
+  if (col.type === 'number') {
+    var sum = 0;
+    tasks.forEach(function(t) {
+      var v = (_boardTaskValues[t.id] && _boardTaskValues[t.id][col.id]) || '';
+      var n = parseFloat(v);
+      if (!isNaN(n)) sum += n;
+    });
+    return sum > 0 ? sum.toLocaleString() : '';
+  }
+  if (col.type === 'status' || col.type === 'priority') {
+    var counts = {};
+    tasks.forEach(function(t) {
+      var v = (_boardTaskValues[t.id] && _boardTaskValues[t.id][col.id]) || '';
+      if (v) counts[v] = (counts[v] || 0) + 1;
+    });
+    var entries = Object.keys(counts);
+    if (entries.length === 0) return '';
+    if (entries.length === 1) return counts[entries[0]] + ' ' + entries[0];
+    /* Show top 2 */
+    entries.sort(function(a, b) { return counts[b] - counts[a]; });
+    return entries.slice(0, 2).map(function(k) { return counts[k] + ' ' + k; }).join(', ');
+  }
+  if (col.type === 'checkbox') {
+    var checked = 0;
+    tasks.forEach(function(t) {
+      if ((_boardTaskValues[t.id] && _boardTaskValues[t.id][col.id]) === 'true') checked++;
+    });
+    return checked > 0 ? checked + '/' + tasks.length : '';
+  }
+  if (col.type === 'date') {
+    /* Show earliest upcoming date */
+    var dates = [];
+    var now = new Date();
+    tasks.forEach(function(t) {
+      var v = (_boardTaskValues[t.id] && _boardTaskValues[t.id][col.id]) || '';
+      if (v) {
+        var d = new Date(v);
+        if (d >= now) dates.push(d);
+      }
+    });
+    if (dates.length === 0) return '';
+    dates.sort(function(a, b) { return a - b; });
+    return 'Next: ' + formatDate(dates[0].toISOString());
+  }
+  return '';
+}
+
+/* ─── Auto-Save Indicator ─── */
+function showSaveStatus(status) {
+  var el = document.getElementById('board-save-status');
+  if (!el) return;
+  clearTimeout(_saveIndicatorTimer);
+  if (status === 'saving') {
+    el.className = 'board-save-indicator saving';
+    el.innerHTML = '<span class="board-save-dot"></span> Saving...';
+  } else if (status === 'saved') {
+    el.className = 'board-save-indicator saved';
+    el.innerHTML = '<span class="board-save-dot"></span> Saved';
+    _saveIndicatorTimer = setTimeout(function() {
+      el.className = 'board-save-indicator';
+      el.innerHTML = '<span class="board-save-dot"></span> Auto-saved';
+    }, 3000);
+  }
+}
+
+/* ─── Keyboard Navigation ─── */
+document.addEventListener('keydown', function(e) {
+  /* Escape closes detail panel */
+  if (e.key === 'Escape' && _boardDetailTaskId) {
+    closeDetailPanel();
+    return;
+  }
+  /* Delete selected items */
+  if ((e.key === 'Delete' || e.key === 'Backspace') && Object.keys(_boardSelectedTasks).length > 0 && !e.target.matches('input,textarea,[contenteditable]')) {
+    e.preventDefault();
+    bulkDelete();
+  }
+});
