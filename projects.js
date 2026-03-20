@@ -51,7 +51,8 @@ async function loadBoardData(projectId) {
     fetchBoardGroups(projectId, true),
     fetchBoardColumns(projectId, true),
     fetchTasks(true),
-    fetchStaffList()
+    fetchStaffList(),
+    typeof fetchAutomations === 'function' ? fetchAutomations(projectId, true) : Promise.resolve([])
   ]);
 
   _boardGroups = (results[0].status === 'fulfilled') ? results[0].value : [];
@@ -122,8 +123,18 @@ function renderBoard(container, projects) {
   });
   html += '</select>';
   html += '<button class="btn btn-sm btn-ghost" onclick="openProjectModal(_currentProjectId)">Settings</button>';
-  html += '<button class="btn btn-sm btn-primary" onclick="openProjectModal()">+ New Board</button>';
+  html += '<button class="btn btn-sm btn-outline" onclick="openAutomationsPanel()">&#9889; Automations</button>';
+  html += '<button class="btn btn-sm btn-outline" onclick="saveCurrentAsTemplate(_currentProjectId)" title="Save as Template">&#9733; Template</button>';
+  html += '<button class="btn btn-sm btn-primary" onclick="openProjectModalWithTemplates()">+ New Board</button>';
   html += '<span class="board-save-indicator" id="board-save-status"><span class="board-save-dot"></span> Auto-saved</span>';
+  html += '</div>';
+
+  /* View Toggle */
+  html += '<div class="board-view-toggle">';
+  html += '<button class="board-view-btn' + (_boardViewMode === 'table' ? ' active' : '') + '" data-view="table" onclick="switchBoardView(\'table\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg> Table</button>';
+  html += '<button class="board-view-btn' + (_boardViewMode === 'kanban' ? ' active' : '') + '" data-view="kanban" onclick="switchBoardView(\'kanban\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="5" height="15" rx="1"/></svg> Kanban</button>';
+  html += '<button class="board-view-btn' + (_boardViewMode === 'timeline' ? ' active' : '') + '" data-view="timeline" onclick="switchBoardView(\'timeline\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="18" y2="18"/></svg> Timeline</button>';
+  html += '<button class="board-view-btn' + (_boardViewMode === 'dashboard' ? ' active' : '') + '" data-view="dashboard" onclick="switchBoardView(\'dashboard\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="13" width="4" height="8" rx="1"/><rect x="10" y="8" width="4" height="13" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg> Dashboard</button>';
   html += '</div>';
 
   /* Search & Filter Toolbar */
@@ -143,7 +154,13 @@ function renderBoard(container, projects) {
   html += '<button class="board-bulk-close" onclick="clearSelection()">&times;</button>';
   html += '</div>';
 
-  /* Board wrapper */
+  /* View containers for non-table views */
+  html += '<div id="board-kanban-container" style="display:' + (_boardViewMode === 'kanban' ? '' : 'none') + ';"></div>';
+  html += '<div id="board-timeline-container" style="display:' + (_boardViewMode === 'timeline' ? '' : 'none') + ';"></div>';
+  html += '<div id="board-dashboard-container" style="display:' + (_boardViewMode === 'dashboard' ? '' : 'none') + ';"></div>';
+
+  /* Board wrapper (table view) */
+  html += '<div id="board-table-container" style="display:' + (_boardViewMode === 'table' ? '' : 'none') + ';">';
   html += '<div class="board-wrapper">';
 
   /* Column headers with sort */
@@ -253,9 +270,15 @@ function renderBoard(container, projects) {
   html += '<div class="board-add-group"><button class="btn btn-ghost btn-sm" onclick="addGroup()">+ Add new group</button></div>';
 
   html += '</div>'; /* board-wrapper */
+  html += '</div>'; /* board-table-container */
 
   /* Drop zone listeners */
   container.innerHTML = html;
+
+  /* Render non-table views if active */
+  if (_boardViewMode === 'kanban') renderKanbanView();
+  else if (_boardViewMode === 'timeline') renderTimelineView();
+  else if (_boardViewMode === 'dashboard') renderDashboardView();
 
   /* Attach drag-over listeners to group bodies */
   var groupBodies = container.querySelectorAll('.board-group-body');
@@ -381,9 +404,42 @@ function renderDateDisplay(val, taskId, colId) {
 
 /* ─── Save Cell Value ─── */
 async function saveCellValue(taskId, colId, newValue) {
+  /* Capture old value before optimistic update */
+  var oldValue = (_boardTaskValues[taskId] && _boardTaskValues[taskId][colId]) || '';
+
   /* Optimistic update */
   if (!_boardTaskValues[taskId]) _boardTaskValues[taskId] = {};
   _boardTaskValues[taskId][colId] = newValue;
+
+  /* Determine column name for activity log */
+  var col = _boardColumns.find(function(c) { return c.id === colId; });
+  var colName = col ? col.name : 'field';
+
+  /* Log activity if value actually changed */
+  if (String(oldValue) !== String(newValue)) {
+    var action = (col && col.type === 'person') ? 'assign' : (col && (col.type === 'status' || col.type === 'priority') ? 'status_change' : 'update');
+    /* For person column, resolve name for activity log */
+    var newDisplay = newValue;
+    var oldDisplay = oldValue;
+    if (col && col.type === 'person') {
+      var newPerson = _boardStaff.find(function(s) { return s.auth_user_id === newValue || s.id === newValue; });
+      var oldPerson = _boardStaff.find(function(s) { return s.auth_user_id === oldValue || s.id === oldValue; });
+      newDisplay = newPerson ? ((newPerson.first_name || '') + ' ' + (newPerson.last_name || '')).trim() : newValue;
+      oldDisplay = oldPerson ? ((oldPerson.first_name || '') + ' ' + (oldPerson.last_name || '')).trim() : oldValue;
+      /* Send notification to newly assigned person */
+      if (newValue && newValue !== oldValue) {
+        var assigneeId = newPerson ? (newPerson.auth_user_id || newPerson.id) : newValue;
+        var task = _boardTasks.find(function(t) { return t.id === taskId; });
+        var assignerName = (currentProfile && currentProfile.full_name) || 'Someone';
+        sendInAppNotification(assigneeId, 'You were assigned to "' + (task ? task.title : 'a task') + '"', assignerName + ' assigned you', '#projects', taskId);
+      }
+    }
+    logTaskActivity(taskId, action, colName, oldDisplay, newDisplay);
+    /* Check automations after mutation */
+    if (typeof checkAutomations === 'function') {
+      checkAutomations('value_changed', { taskId: taskId, colId: colId, colType: col ? col.type : '', colName: colName, oldValue: oldValue, newValue: newValue });
+    }
+  }
 
   try {
     await resilientWrite(function() {
@@ -776,25 +832,38 @@ async function addTaskToGroup(groupId, title) {
   var maxOrder = _boardTasks.filter(function(t) { return t.group_id === groupId; })
     .reduce(function(m, t) { return Math.max(m, t.sort_order || 0); }, -1);
   try {
-    await resilientWrite(function() {
+    var newTaskResult = await resilientWrite(function() {
       return sb.from('hq_tasks').insert({
         project_id: _currentProjectId,
         group_id: groupId,
         title: title,
         status: 'Backlog',
         sort_order: maxOrder + 1
-      });
+      }).select('id').single();
     }, 'addTask');
+    if (newTaskResult && newTaskResult.data) {
+      logTaskActivity(newTaskResult.data.id, 'create', null, null, title);
+      if (typeof checkAutomations === 'function') {
+        checkAutomations('item_created', { taskId: newTaskResult.data.id, groupId: groupId, title: title });
+      }
+    }
     clearCache('tasks');
     renderProjects();
   } catch (err) { showToast('Failed to add item.', 'error'); }
 }
 
 async function moveTaskToGroup(taskId, newGroupId) {
+  var task = _boardTasks.find(function(t) { return t.id === taskId; });
+  var oldGroup = task ? _boardGroups.find(function(g) { return g.id === task.group_id; }) : null;
+  var newGroup = _boardGroups.find(function(g) { return g.id === newGroupId; });
   try {
     await resilientWrite(function() {
       return sb.from('hq_tasks').update({ group_id: newGroupId, updated_at: new Date().toISOString() }).eq('id', taskId);
     }, 'moveTask');
+    logTaskActivity(taskId, 'move', 'Group', oldGroup ? oldGroup.name : '', newGroup ? newGroup.name : '');
+    if (typeof checkAutomations === 'function') {
+      checkAutomations('group_changed', { taskId: taskId, oldGroupId: task ? task.group_id : null, newGroupId: newGroupId });
+    }
     clearCache('tasks');
     renderProjects();
     showToast('Item moved.', 'success');
@@ -826,7 +895,10 @@ function openProjectModal(projectId) {
   if (projectId) {
     footer.innerHTML = '<button class="btn btn-danger-ghost" onclick="deleteProject(\'' + projectId + '\')">Delete Board</button><div style="flex:1;"></div><button class="btn btn-secondary" onclick="closeModal(\'hq-modal\')">Cancel</button><button class="btn btn-primary" id="hq-modal-save">Save</button>';
   } else {
-    footer.innerHTML = '<button class="btn btn-secondary" onclick="closeModal(\'hq-modal\')">Cancel</button><button class="btn btn-primary" id="hq-modal-save">Create</button>';
+    /* For new boards, redirect to template-aware modal */
+    closeModal('hq-modal');
+    openProjectModalWithTemplates();
+    return;
   }
   document.getElementById('hq-modal-save').onclick = function() { saveProject(projectId); };
   openModal('hq-modal');
@@ -1123,9 +1195,11 @@ async function duplicateTask(taskId) {
 
 /* ─── Delete Task ─── */
 async function deleteTask(taskId) {
+  var task = _boardTasks.find(function(t) { return t.id === taskId; });
   customConfirm('Delete this item?', async function() {
     try {
       showSaveStatus('saving');
+      logTaskActivity(taskId, 'delete', null, task ? task.title : '', null);
       /* Animate removal */
       var row = document.querySelector('.board-row[data-task-id="' + taskId + '"]');
       if (row) row.classList.add('board-row-removing');
@@ -1176,6 +1250,35 @@ function openDetailPanel(taskId) {
     html += '<textarea class="board-detail-update-input" placeholder="Add notes or description..." onblur="saveTaskDescription(\'' + taskId + '\',this.value)">' + escapeHtml(desc) + '</textarea>';
     html += '</div>';
 
+    /* Comments section */
+    html += '<div class="board-detail-section">';
+    html += '<div class="board-detail-section-title">Comments</div>';
+    html += '<div class="board-detail-comments" id="detail-comments-list"><div class="skeleton" style="height:40px;"></div></div>';
+    html += '<div class="board-comment-input-wrap">';
+    html += '<textarea class="board-comment-input" id="detail-comment-input" placeholder="Write a comment..." onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();postComment(\'' + taskId + '\');}" rows="2"></textarea>';
+    html += '<button class="btn btn-primary btn-sm" onclick="postComment(\'' + taskId + '\')" style="align-self:flex-end;">Post</button>';
+    html += '</div>';
+    html += '</div>';
+
+    /* Attachments section */
+    html += '<div class="board-detail-section">';
+    html += '<div class="board-detail-section-title">Attachments</div>';
+    html += '<div class="board-detail-attachments">';
+    html += '<div id="detail-attachments-list"><div class="skeleton" style="height:40px;"></div></div>';
+    html += '<div class="board-attachment-dropzone" ondragover="handleAttachmentDragOver(event)" ondragleave="handleAttachmentDragLeave(event)" ondrop="handleAttachmentDrop(event,\'' + taskId + '\')">';
+    html += '<span>Drop files here or </span>';
+    html += '<button class="btn btn-ghost btn-sm" onclick="triggerAttachmentUpload(\'' + taskId + '\')">browse</button>';
+    html += '<input type="file" id="detail-attachment-input" multiple style="display:none;">';
+    html += '</div>';
+    html += '</div>';
+    html += '</div>';
+
+    /* Activity timeline */
+    html += '<div class="board-detail-section">';
+    html += '<div class="board-detail-section-title">Activity</div>';
+    html += '<div class="board-activity-timeline" id="detail-activity-list"><div class="skeleton" style="height:40px;"></div></div>';
+    html += '</div>';
+
     /* Metadata */
     html += '<div class="board-detail-section">';
     html += '<div class="board-detail-section-title">Details</div>';
@@ -1186,6 +1289,11 @@ function openDetailPanel(taskId) {
     html += '</div>';
 
     body.innerHTML = html;
+
+    /* Load comments, attachments, and activity asynchronously */
+    renderComments(taskId);
+    renderAttachments(taskId);
+    renderActivityLog(taskId);
   }
 
   /* Delete button */
@@ -1282,6 +1390,1004 @@ function showSaveStatus(status) {
     }, 3000);
   }
 }
+
+/* ─── Comments ─── */
+async function renderComments(taskId) {
+  var container = document.getElementById('detail-comments-list');
+  if (!container) return;
+  try {
+    var comments = await fetchTaskComments(taskId, true);
+    if (_boardDetailTaskId !== taskId) return; /* panel switched */
+    if (comments.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--color-tx-faint);font-size:var(--text-xs);">No comments yet</div>';
+      return;
+    }
+    var html = '';
+    comments.forEach(function(c) {
+      var initials = (c.user_name || 'U').split(' ').map(function(w) { return w.charAt(0); }).join('').substring(0, 2).toUpperCase();
+      var pColor = PERSON_COLORS[Math.abs(hashStr(c.user_id || '')) % PERSON_COLORS.length];
+      var isOwn = currentUser && c.user_id === currentUser.id;
+      html += '<div class="board-comment" data-comment-id="' + c.id + '">';
+      html += '<div class="board-comment-header">';
+      html += '<div class="board-person-avatar" style="background:' + pColor + ';width:24px;height:24px;font-size:0.5rem;">' + escapeHtml(initials) + '</div>';
+      html += '<span class="board-comment-author">' + escapeHtml(c.user_name || 'Unknown') + '</span>';
+      html += '<span class="board-comment-time">' + timeAgo(c.created_at) + '</span>';
+      if (isOwn) {
+        html += '<button class="board-comment-delete" onclick="deleteComment(\'' + c.id + '\',\'' + taskId + '\')" title="Delete">&times;</button>';
+      }
+      html += '</div>';
+      html += '<div class="board-comment-body">' + escapeHtml(c.content).replace(/\n/g, '<br>') + '</div>';
+      html += '</div>';
+    });
+    container.innerHTML = html;
+    container.scrollTop = container.scrollHeight;
+  } catch (err) {
+    container.innerHTML = '<div style="color:var(--color-error);font-size:var(--text-xs);padding:0.5rem;">Failed to load comments</div>';
+  }
+}
+
+async function postComment(taskId) {
+  var input = document.getElementById('detail-comment-input');
+  if (!input) return;
+  var content = input.value.trim();
+  if (!content) return;
+
+  var userName = (currentProfile && currentProfile.full_name) || (currentUser && currentUser.email) || 'Unknown';
+  var userId = currentUser ? currentUser.id : null;
+
+  input.value = '';
+  try {
+    await resilientWrite(function() {
+      return sb.from('hq_task_comments').insert({
+        task_id: taskId,
+        user_id: userId,
+        user_name: userName,
+        content: content
+      });
+    }, 'postComment');
+    clearCache('taskComments');
+    renderComments(taskId);
+    logTaskActivity(taskId, 'comment', null, null, content.substring(0, 100));
+
+    /* Notify assigned person if different from commenter */
+    var personCol = _boardColumns.find(function(c) { return c.type === 'person'; });
+    if (personCol && _boardTaskValues[taskId]) {
+      var assignedId = _boardTaskValues[taskId][personCol.id];
+      if (assignedId && assignedId !== userId) {
+        var task = _boardTasks.find(function(t) { return t.id === taskId; });
+        sendInAppNotification(assignedId, 'New comment on "' + (task ? task.title : 'task') + '"', userName + ': ' + content.substring(0, 80), '#projects', taskId);
+      }
+    }
+    showToast('Comment posted.', 'success');
+  } catch (err) {
+    showToast('Failed to post comment.', 'error');
+  }
+}
+
+async function deleteComment(commentId, taskId) {
+  customConfirm('Delete this comment?', async function() {
+    try {
+      await resilientWrite(function() {
+        return sb.from('hq_task_comments').delete().eq('id', commentId);
+      }, 'deleteComment');
+      clearCache('taskComments');
+      renderComments(taskId);
+      logTaskActivity(taskId, 'delete_comment', null, null, null);
+      showToast('Comment deleted.', 'success');
+    } catch (err) { showToast('Failed to delete comment.', 'error'); }
+  });
+}
+
+/* ─── Activity Timeline ─── */
+async function renderActivityLog(taskId) {
+  var container = document.getElementById('detail-activity-list');
+  if (!container) return;
+  try {
+    var activity = await fetchTaskActivity(taskId, true);
+    if (_boardDetailTaskId !== taskId) return;
+    if (activity.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--color-tx-faint);font-size:var(--text-xs);">No activity yet</div>';
+      return;
+    }
+    var html = '';
+    activity.forEach(function(a) {
+      var desc = formatActivityDescription(a);
+      var dotColor = getActivityDotColor(a.action);
+      html += '<div class="board-activity-item">';
+      html += '<div class="activity-dot" style="background:' + dotColor + ';"></div>';
+      html += '<div style="flex:1;min-width:0;">';
+      html += '<div class="board-activity-text">' + desc + '</div>';
+      html += '<div class="board-activity-time">' + timeAgo(a.created_at) + '</div>';
+      html += '</div></div>';
+    });
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = '<div style="color:var(--color-error);font-size:var(--text-xs);padding:0.5rem;">Failed to load activity</div>';
+  }
+}
+
+function formatActivityDescription(a) {
+  var name = '<strong>' + escapeHtml(a.user_name || 'Someone') + '</strong>';
+  switch (a.action) {
+    case 'create': return name + ' created this item';
+    case 'update':
+      if (a.field_name && a.new_value) return name + ' changed <strong>' + escapeHtml(a.field_name) + '</strong> to "' + escapeHtml(a.new_value) + '"';
+      if (a.field_name) return name + ' updated <strong>' + escapeHtml(a.field_name) + '</strong>';
+      return name + ' updated this item';
+    case 'move': return name + ' moved item to group "' + escapeHtml(a.new_value || '') + '"';
+    case 'delete': return name + ' deleted this item';
+    case 'comment': return name + ' commented: "' + escapeHtml((a.new_value || '').substring(0, 60)) + (a.new_value && a.new_value.length > 60 ? '...' : '') + '"';
+    case 'delete_comment': return name + ' deleted a comment';
+    case 'assign':
+      if (a.new_value) return name + ' assigned <strong>' + escapeHtml(a.new_value) + '</strong>';
+      return name + ' unassigned person';
+    case 'status_change': return name + ' changed status to "' + escapeHtml(a.new_value || '') + '"';
+    default: return name + ' ' + escapeHtml(a.action || 'performed an action');
+  }
+}
+
+function getActivityDotColor(action) {
+  switch (action) {
+    case 'create': return '#00c875';
+    case 'comment': return '#579bfc';
+    case 'delete':
+    case 'delete_comment': return '#e2445c';
+    case 'assign': return '#a25ddc';
+    case 'status_change': return '#fdab3d';
+    default: return '#c4c4c4';
+  }
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  var now = Date.now();
+  var then = new Date(dateStr).getTime();
+  var diff = Math.floor((now - then) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+  return formatDate(dateStr);
+}
+
+/* ═══ PHASE 4 UI: FILE ATTACHMENTS ═══ */
+
+async function renderAttachments(taskId) {
+  var container = document.getElementById('detail-attachments-list');
+  if (!container) return;
+  try {
+    var attachments = await fetchTaskAttachments(taskId, true);
+    if (_boardDetailTaskId !== taskId) return;
+    if (attachments.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--color-tx-faint);font-size:var(--text-xs);">No attachments yet</div>';
+      return;
+    }
+    var html = '';
+    attachments.forEach(function(a) {
+      var ext = (a.file_name || '').split('.').pop().toLowerCase();
+      var iconClass = 'board-attachment-icon';
+      var iconText = ext.toUpperCase().substring(0, 4);
+      html += '<div class="board-attachment-item" data-attachment-id="' + a.id + '">';
+      html += '<div class="' + iconClass + '">' + escapeHtml(iconText) + '</div>';
+      html += '<div style="flex:1;min-width:0;">';
+      html += '<div style="font-size:var(--text-xs);font-weight:500;color:var(--color-tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escapeHtml(a.file_name) + '">' + escapeHtml(a.file_name) + '</div>';
+      html += '<div style="font-size:0.625rem;color:var(--color-tx-faint);">' + formatFileSize(a.file_size) + ' &middot; ' + timeAgo(a.created_at) + '</div>';
+      html += '</div>';
+      html += '<a class="btn btn-ghost btn-sm" href="' + escapeHtml(a.public_url || '#') + '" target="_blank" rel="noopener" title="Download" style="padding:0.25rem;">&#x2B07;</a>';
+      html += '<button class="btn btn-ghost btn-sm" onclick="deleteAttachment(\'' + a.id + '\',\'' + escapeHtml(a.storage_path || '') + '\',\'' + taskId + '\')" title="Delete" style="padding:0.25rem;color:var(--color-error);">&times;</button>';
+      html += '</div>';
+    });
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = '<div style="color:var(--color-error);font-size:var(--text-xs);padding:0.5rem;">Failed to load attachments</div>';
+  }
+}
+
+async function uploadAttachment(taskId, file) {
+  if (!file || !taskId) return;
+  var task = _boardTasks.find(function(t) { return t.id === taskId; });
+  var projectId = task ? task.project_id : _currentProjectId;
+  var storagePath = projectId + '/' + taskId + '/' + Date.now() + '_' + file.name;
+
+  try {
+    showToast('Uploading ' + file.name + '...', 'info');
+    var uploadResult = await sb.storage.from('hq-attachments').upload(storagePath, file, { upsert: false });
+    if (uploadResult.error) { showToast('Upload failed: ' + uploadResult.error.message, 'error'); return; }
+
+    var publicUrlResult = sb.storage.from('hq-attachments').getPublicUrl(storagePath);
+    var publicUrl = (publicUrlResult && publicUrlResult.data) ? publicUrlResult.data.publicUrl : '';
+
+    var userName = (currentProfile && currentProfile.full_name) || (currentUser && currentUser.email) || 'Unknown';
+    await resilientWrite(function() {
+      return sb.from('hq_task_attachments').insert({
+        task_id: taskId,
+        file_name: file.name,
+        file_size: file.size,
+        mime_type: file.type || 'application/octet-stream',
+        storage_path: storagePath,
+        public_url: publicUrl,
+        uploaded_by: currentUser ? currentUser.id : null,
+        uploaded_by_name: userName
+      });
+    }, 'insertAttachment');
+
+    clearCache('taskAttachments');
+    renderAttachments(taskId);
+    logTaskActivity(taskId, 'attach', null, null, file.name);
+    showToast('File uploaded.', 'success');
+  } catch (err) {
+    console.error('[uploadAttachment]', err);
+    showToast('Failed to upload file.', 'error');
+  }
+}
+
+function deleteAttachment(attachmentId, storagePath, taskId) {
+  customConfirm('Delete this attachment?', async function() {
+    try {
+      if (storagePath) {
+        await sb.storage.from('hq-attachments').remove([storagePath]);
+      }
+      await resilientWrite(function() {
+        return sb.from('hq_task_attachments').delete().eq('id', attachmentId);
+      }, 'deleteAttachment');
+      clearCache('taskAttachments');
+      renderAttachments(taskId);
+      logTaskActivity(taskId, 'delete_attachment', null, null, null);
+      showToast('Attachment deleted.', 'success');
+    } catch (err) { showToast('Failed to delete attachment.', 'error'); }
+  });
+}
+
+function triggerAttachmentUpload(taskId) {
+  var input = document.getElementById('detail-attachment-input');
+  if (!input) return;
+  input.onchange = function() {
+    if (input.files && input.files.length > 0) {
+      for (var i = 0; i < input.files.length; i++) {
+        uploadAttachment(taskId, input.files[i]);
+      }
+      input.value = '';
+    }
+  };
+  input.click();
+}
+
+function handleAttachmentDrop(event, taskId) {
+  event.preventDefault();
+  event.stopPropagation();
+  var dropzone = event.currentTarget;
+  dropzone.classList.remove('dragover');
+  var files = event.dataTransfer.files;
+  if (files && files.length > 0) {
+    for (var i = 0; i < files.length; i++) {
+      uploadAttachment(taskId, files[i]);
+    }
+  }
+}
+
+function handleAttachmentDragOver(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  event.currentTarget.classList.add('dragover');
+}
+
+function handleAttachmentDragLeave(event) {
+  event.currentTarget.classList.remove('dragover');
+}
+
+
+/* ═══ PHASE 7 UI: BOARD TEMPLATES ═══ */
+
+var _selectedTemplateId = null;
+
+async function openProjectModalWithTemplates() {
+  /* Called for new board only */
+  var title = 'New Board';
+  document.getElementById('hq-modal-title').textContent = title;
+  var body = document.getElementById('hq-modal-body');
+
+  var templates = [];
+  try {
+    templates = await fetchBoardTemplates();
+  } catch (err) { console.error('[fetchBoardTemplates]', err); }
+
+  _selectedTemplateId = null;
+
+  var html = '<div class="board-template-section">';
+  html += '<label class="field-label">Start from a template</label>';
+  html += '<div class="board-template-grid">';
+  /* Blank board option */
+  html += '<div class="board-template-card selected" data-template-id="" onclick="selectTemplate(this,\'\')">';
+  html += '<div class="board-template-card-icon" style="background:var(--color-surface-offset);">&#9776;</div>';
+  html += '<div class="board-template-card-name">Blank Board</div>';
+  html += '<div class="board-template-card-desc">Start with default columns</div>';
+  html += '</div>';
+  templates.forEach(function(t) {
+    html += '<div class="board-template-card" data-template-id="' + t.id + '" onclick="selectTemplate(this,\'' + t.id + '\')">';
+    html += '<div class="board-template-card-icon" style="background:var(--color-primary-hl);color:var(--color-primary);">' + (t.is_system ? '&#9733;' : '&#9998;') + '</div>';
+    html += '<div class="board-template-card-name">' + escapeHtml(t.name) + '</div>';
+    html += '<div class="board-template-card-desc">' + escapeHtml(t.description || 'Custom template') + '</div>';
+    html += '</div>';
+  });
+  html += '</div></div>';
+
+  html += '<div class="form-row"><label class="field-label">Board Name</label><input type="text" id="proj-name" class="input-field" placeholder="Board name"></div>';
+  html += '<div class="form-row"><label class="field-label">Description</label><textarea id="proj-desc" class="input-field" placeholder="What is this board for?"></textarea></div>';
+
+  body.innerHTML = html;
+
+  var footer = document.getElementById('hq-modal-footer');
+  footer.innerHTML = '<button class="btn btn-secondary" onclick="closeModal(\'hq-modal\')">Cancel</button><button class="btn btn-primary" id="hq-modal-save">Create</button>';
+  document.getElementById('hq-modal-save').onclick = function() { saveProjectFromTemplate(); };
+  openModal('hq-modal');
+}
+
+function selectTemplate(el, templateId) {
+  _selectedTemplateId = templateId || null;
+  var cards = el.parentElement.querySelectorAll('.board-template-card');
+  for (var i = 0; i < cards.length; i++) cards[i].classList.remove('selected');
+  el.classList.add('selected');
+}
+
+async function saveProjectFromTemplate() {
+  var name = document.getElementById('proj-name').value.trim();
+  if (!name) { showToast('Board name is required.', 'error'); return; }
+  var desc = document.getElementById('proj-desc').value.trim();
+
+  try {
+    var data = { name: name, description: desc, owner_id: currentUser ? currentUser.id : null, status: 'In Progress' };
+    var result = await resilientWrite(function() { return sb.from('hq_projects').insert(data).select('id').single(); }, 'insertProject');
+    if (!result || !result.data) { showToast('Failed to create board.', 'error'); return; }
+
+    var newProjectId = result.data.id;
+    _currentProjectId = newProjectId;
+
+    if (_selectedTemplateId) {
+      await createFromTemplate(_selectedTemplateId, newProjectId);
+    } else {
+      await initBoardDefaults(newProjectId);
+    }
+
+    clearCache('projects');
+    closeModal('hq-modal');
+    renderProjects();
+    showToast('Board created!', 'success');
+  } catch (err) {
+    console.error('[saveProjectFromTemplate]', err);
+    showToast('Failed to create board.', 'error');
+  }
+}
+
+async function createFromTemplate(templateId, projectId) {
+  try {
+    var templates = await fetchBoardTemplates();
+    var tpl = templates.find(function(t) { return t.id === templateId; });
+    if (!tpl || !tpl.template_data) {
+      await initBoardDefaults(projectId);
+      return;
+    }
+    var tData = tpl.template_data;
+
+    /* Insert groups */
+    if (tData.groups && tData.groups.length > 0) {
+      var groups = tData.groups.map(function(g, idx) {
+        return { project_id: projectId, name: g.name, color: g.color || GROUP_COLORS[idx % GROUP_COLORS.length], sort_order: idx };
+      });
+      await resilientWrite(function() { return sb.from('hq_board_groups').insert(groups); }, 'tplGroups');
+    } else {
+      /* Fallback defaults */
+      await resilientWrite(function() {
+        return sb.from('hq_board_groups').insert([
+          { project_id: projectId, name: 'To Do', color: '#579bfc', sort_order: 0 },
+          { project_id: projectId, name: 'In Progress', color: '#fdab3d', sort_order: 1 },
+          { project_id: projectId, name: 'Done', color: '#00c875', sort_order: 2 }
+        ]);
+      }, 'tplDefaultGroups');
+    }
+
+    /* Insert columns */
+    if (tData.columns && tData.columns.length > 0) {
+      var columns = tData.columns.map(function(c, idx) {
+        return {
+          project_id: projectId,
+          name: c.name,
+          type: c.type || 'text',
+          sort_order: idx,
+          width: c.width || 140,
+          settings: c.settings || {}
+        };
+      });
+      await resilientWrite(function() { return sb.from('hq_board_columns').insert(columns); }, 'tplColumns');
+    }
+
+    clearCache('boardGroups');
+    clearCache('boardColumns');
+  } catch (err) {
+    console.error('[createFromTemplate]', err);
+    showToast('Template applied with defaults.', 'info');
+    await initBoardDefaults(projectId);
+  }
+}
+
+async function saveCurrentAsTemplate(projectId) {
+  var proj = (dataCache.projects || []).find(function(p) { return p.id === projectId; });
+  var projName = proj ? proj.name : 'Untitled';
+
+  var tplName = prompt('Template name:', projName + ' Template');
+  if (!tplName) return;
+
+  try {
+    var groups = await fetchBoardGroups(projectId, true);
+    var columns = await fetchBoardColumns(projectId, true);
+
+    var templateData = {
+      groups: groups.map(function(g) { return { name: g.name, color: g.color }; }),
+      columns: columns.map(function(c) { return { name: c.name, type: c.type, width: c.width, settings: c.settings }; })
+    };
+
+    await resilientWrite(function() {
+      return sb.from('hq_board_templates').insert({
+        name: tplName,
+        description: 'Created from "' + projName + '"',
+        template_data: templateData,
+        is_system: false,
+        created_by: currentUser ? currentUser.id : null
+      });
+    }, 'saveTemplate');
+    clearCache('boardTemplates');
+    showToast('Template saved!', 'success');
+  } catch (err) {
+    console.error('[saveCurrentAsTemplate]', err);
+    showToast('Failed to save template.', 'error');
+  }
+}
+
+
+/* ═══ VIEW TOGGLE SYSTEM ═══ */
+
+var _boardViewMode = 'table';
+
+function switchBoardView(mode) {
+  _boardViewMode = mode;
+  /* Update toggle button states */
+  var btns = document.querySelectorAll('.board-view-btn');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].classList.toggle('active', btns[i].getAttribute('data-view') === mode);
+  }
+  /* Show/hide containers */
+  var tableEl = document.getElementById('board-table-container');
+  var kanbanEl = document.getElementById('board-kanban-container');
+  var timelineEl = document.getElementById('board-timeline-container');
+  var dashboardEl = document.getElementById('board-dashboard-container');
+  if (tableEl) tableEl.style.display = (mode === 'table') ? '' : 'none';
+  if (kanbanEl) kanbanEl.style.display = (mode === 'kanban') ? '' : 'none';
+  if (timelineEl) timelineEl.style.display = (mode === 'timeline') ? '' : 'none';
+  if (dashboardEl) dashboardEl.style.display = (mode === 'dashboard') ? '' : 'none';
+
+  /* Render the selected view */
+  if (mode === 'kanban') renderKanbanView();
+  else if (mode === 'timeline') renderTimelineView();
+  else if (mode === 'dashboard') renderDashboardView();
+}
+
+
+/* ═══ PHASE 5: TIMELINE/GANTT VIEW ═══ */
+
+var _timelineZoom = 'week'; /* day | week | month */
+
+function renderTimelineView() {
+  var container = document.getElementById('board-timeline-container');
+  if (!container) return;
+
+  /* Find date columns */
+  var dateCol = _boardColumns.find(function(c) { return c.type === 'date'; });
+  if (!dateCol) {
+    container.innerHTML = '<div class="empty-state" style="padding:3rem;"><div class="empty-state-title">No date column</div><div class="empty-state-text">Add a Date column to your board to use Timeline view.</div></div>';
+    return;
+  }
+
+  /* Compute date range */
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+  var allDates = [];
+  var tasksWithDates = [];
+  var tasksWithoutDates = [];
+
+  _boardTasks.forEach(function(t) {
+    var dateVal = (_boardTaskValues[t.id] && _boardTaskValues[t.id][dateCol.id]) || '';
+    if (dateVal) {
+      var d = new Date(dateVal);
+      if (!isNaN(d.getTime())) {
+        allDates.push(d);
+        tasksWithDates.push({ task: t, date: d });
+      } else {
+        tasksWithoutDates.push(t);
+      }
+    } else {
+      tasksWithoutDates.push(t);
+    }
+  });
+
+  /* Range: 2 weeks before today to 4 weeks after, or encompass all dates */
+  var rangeStart = new Date(today);
+  rangeStart.setDate(rangeStart.getDate() - 14);
+  var rangeEnd = new Date(today);
+  rangeEnd.setDate(rangeEnd.getDate() + 28);
+
+  allDates.forEach(function(d) {
+    if (d < rangeStart) rangeStart = new Date(d.getTime() - 7 * 86400000);
+    if (d > rangeEnd) rangeEnd = new Date(d.getTime() + 7 * 86400000);
+  });
+
+  /* Generate day slots */
+  var days = [];
+  var cursor = new Date(rangeStart);
+  while (cursor <= rangeEnd) {
+    days.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  /* Zoom factor */
+  var dayWidth = _timelineZoom === 'day' ? 40 : (_timelineZoom === 'month' ? 8 : 20);
+  var totalWidth = days.length * dayWidth;
+
+  var html = '';
+
+  /* Zoom controls */
+  html += '<div class="timeline-zoom-controls">';
+  html += '<button class="btn btn-sm' + (_timelineZoom === 'day' ? ' btn-primary' : ' btn-ghost') + '" onclick="_timelineZoom=\'day\';renderTimelineView()">Day</button>';
+  html += '<button class="btn btn-sm' + (_timelineZoom === 'week' ? ' btn-primary' : ' btn-ghost') + '" onclick="_timelineZoom=\'week\';renderTimelineView()">Week</button>';
+  html += '<button class="btn btn-sm' + (_timelineZoom === 'month' ? ' btn-primary' : ' btn-ghost') + '" onclick="_timelineZoom=\'month\';renderTimelineView()">Month</button>';
+  html += '</div>';
+
+  html += '<div class="timeline-container">';
+
+  /* Sidebar: tasks without dates */
+  if (tasksWithoutDates.length > 0) {
+    html += '<div class="timeline-sidebar">';
+    html += '<div style="font-size:var(--text-xs);font-weight:600;color:var(--color-tx-muted);padding:0.5rem;border-bottom:1px solid var(--color-divider);">No Date (' + tasksWithoutDates.length + ')</div>';
+    tasksWithoutDates.forEach(function(t) {
+      html += '<div class="timeline-sidebar-item" onclick="openDetailPanel(\'' + t.id + '\')">' + escapeHtml(t.title) + '</div>';
+    });
+    html += '</div>';
+  }
+
+  /* Main timeline */
+  html += '<div class="timeline-scroll-area">';
+
+  /* Date header */
+  html += '<div class="timeline-header" style="width:' + totalWidth + 'px;">';
+  html += '<div class="timeline-dates">';
+
+  /* Month labels */
+  var lastMonth = -1;
+  days.forEach(function(d, idx) {
+    if (d.getMonth() !== lastMonth) {
+      lastMonth = d.getMonth();
+      var monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      html += '<div class="timeline-month-label" style="left:' + (idx * dayWidth) + 'px;">' + monthNames[d.getMonth()] + ' ' + d.getFullYear() + '</div>';
+    }
+  });
+  html += '</div>';
+
+  /* Day labels */
+  html += '<div class="timeline-day-labels">';
+  days.forEach(function(d, idx) {
+    var isToday = d.toDateString() === today.toDateString();
+    var isWeekend = d.getDay() === 0 || d.getDay() === 6;
+    var showLabel = _timelineZoom === 'day' || (_timelineZoom === 'week' && d.getDay() === 1) || (_timelineZoom === 'month' && d.getDate() === 1);
+    html += '<div class="timeline-day-cell' + (isToday ? ' today' : '') + (isWeekend ? ' weekend' : '') + '" style="width:' + dayWidth + 'px;left:' + (idx * dayWidth) + 'px;">';
+    if (showLabel) html += '<span>' + d.getDate() + '</span>';
+    html += '</div>';
+  });
+  html += '</div>';
+  html += '</div>'; /* timeline-header */
+
+  /* Timeline body */
+  html += '<div class="timeline-body" style="width:' + totalWidth + 'px;">';
+
+  /* Today line */
+  var todayIdx = -1;
+  for (var di = 0; di < days.length; di++) {
+    if (days[di].toDateString() === today.toDateString()) { todayIdx = di; break; }
+  }
+  if (todayIdx >= 0) {
+    html += '<div class="timeline-today-line" style="left:' + (todayIdx * dayWidth + dayWidth / 2) + 'px;"></div>';
+  }
+
+  /* Group rows */
+  _boardGroups.forEach(function(group) {
+    var groupTasksWithDates = tasksWithDates.filter(function(td) { return td.task.group_id === group.id; });
+    if (groupTasksWithDates.length === 0) return;
+
+    html += '<div class="timeline-group-header" style="border-left:3px solid ' + group.color + ';">' + escapeHtml(group.name) + ' (' + groupTasksWithDates.length + ')</div>';
+
+    groupTasksWithDates.forEach(function(td) {
+      var dayOffset = Math.round((td.date.getTime() - rangeStart.getTime()) / 86400000);
+      var barLeft = dayOffset * dayWidth;
+      var barWidth = Math.max(dayWidth, dayWidth * 3); /* Minimum 3 days wide */
+
+      /* Status color */
+      var statusCol = _boardColumns.find(function(c) { return c.type === 'status'; });
+      var statusVal = statusCol ? ((_boardTaskValues[td.task.id] && _boardTaskValues[td.task.id][statusCol.id]) || '') : '';
+      var barColor = group.color;
+      if (statusCol && statusCol.settings && statusCol.settings.labels) {
+        var label = statusCol.settings.labels.find(function(l) { return l.name === statusVal; });
+        if (label) barColor = label.color;
+      }
+
+      html += '<div class="timeline-row">';
+      html += '<div class="timeline-bar" style="left:' + barLeft + 'px;width:' + barWidth + 'px;background:' + barColor + ';" onclick="openDetailPanel(\'' + td.task.id + '\')" title="' + escapeHtml(td.task.title) + ' (' + formatDate(td.date.toISOString()) + ')">';
+      html += '<span class="timeline-bar-label">' + escapeHtml(td.task.title) + '</span>';
+      html += '</div>';
+      html += '</div>';
+    });
+  });
+
+  html += '</div>'; /* timeline-body */
+  html += '</div>'; /* timeline-scroll-area */
+  html += '</div>'; /* timeline-container */
+
+  container.innerHTML = html;
+}
+
+
+/* ═══ PHASE 6: DASHBOARD/CHART VIEW ═══ */
+
+async function renderDashboardView() {
+  var container = document.getElementById('board-dashboard-container');
+  if (!container) return;
+
+  var tasks = _boardTasks;
+  var totalTasks = tasks.length;
+
+  /* Status distribution */
+  var statusCol = _boardColumns.find(function(c) { return c.type === 'status'; });
+  var statusCounts = {};
+  var statusColors = {};
+  if (statusCol && statusCol.settings && statusCol.settings.labels) {
+    statusCol.settings.labels.forEach(function(l) {
+      statusCounts[l.name] = 0;
+      statusColors[l.name] = l.color;
+    });
+  }
+  var noStatus = 0;
+  tasks.forEach(function(t) {
+    var val = statusCol ? ((_boardTaskValues[t.id] && _boardTaskValues[t.id][statusCol.id]) || '') : '';
+    if (val && statusCounts[val] !== undefined) statusCounts[val]++;
+    else noStatus++;
+  });
+
+  /* Person distribution */
+  var personCol = _boardColumns.find(function(c) { return c.type === 'person'; });
+  var personCounts = {};
+  tasks.forEach(function(t) {
+    var val = personCol ? ((_boardTaskValues[t.id] && _boardTaskValues[t.id][personCol.id]) || '') : '';
+    if (val) {
+      var person = _boardStaff.find(function(s) { return s.auth_user_id === val || s.id === val; });
+      var pName = person ? ((person.first_name || '') + ' ' + (person.last_name || '')).trim() : 'Unknown';
+      personCounts[pName] = (personCounts[pName] || 0) + 1;
+    }
+  });
+
+  /* Due date / overdue */
+  var dateCol = _boardColumns.find(function(c) { return c.type === 'date'; });
+  var overdueCount = 0;
+  var now = new Date(); now.setHours(0, 0, 0, 0);
+  if (dateCol) {
+    tasks.forEach(function(t) {
+      var val = (_boardTaskValues[t.id] && _boardTaskValues[t.id][dateCol.id]) || '';
+      if (val) {
+        var d = new Date(val);
+        var isDone = false;
+        if (statusCol) {
+          var sv = (_boardTaskValues[t.id] && _boardTaskValues[t.id][statusCol.id]) || '';
+          isDone = (sv === 'Done' || sv === 'Completed');
+        }
+        if (d < now && !isDone) overdueCount++;
+      }
+    });
+  }
+
+  /* Completed count */
+  var completedCount = 0;
+  if (statusCol) {
+    tasks.forEach(function(t) {
+      var sv = (_boardTaskValues[t.id] && _boardTaskValues[t.id][statusCol.id]) || '';
+      if (sv === 'Done' || sv === 'Completed') completedCount++;
+    });
+  }
+
+  /* Group progress */
+  var groupProgress = [];
+  _boardGroups.forEach(function(g) {
+    var gTasks = tasks.filter(function(t) { return t.group_id === g.id; });
+    var gDone = 0;
+    if (statusCol) {
+      gTasks.forEach(function(t) {
+        var sv = (_boardTaskValues[t.id] && _boardTaskValues[t.id][statusCol.id]) || '';
+        if (sv === 'Done' || sv === 'Completed') gDone++;
+      });
+    }
+    groupProgress.push({ name: g.name, color: g.color, total: gTasks.length, done: gDone, pct: gTasks.length > 0 ? Math.round((gDone / gTasks.length) * 100) : 0 });
+  });
+
+  var html = '<div class="board-dashboard">';
+
+  /* KPI cards */
+  html += '<div class="board-dashboard-grid">';
+  html += '<div class="board-stat-card"><div class="board-stat-value">' + totalTasks + '</div><div class="board-stat-label">Total Items</div></div>';
+  html += '<div class="board-stat-card"><div class="board-stat-value" style="color:#00c875;">' + completedCount + '</div><div class="board-stat-label">Completed</div></div>';
+  html += '<div class="board-stat-card"><div class="board-stat-value" style="color:#e2445c;">' + overdueCount + '</div><div class="board-stat-label">Overdue</div></div>';
+  html += '<div class="board-stat-card"><div class="board-stat-value">' + (totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0) + '%</div><div class="board-stat-label">Completion Rate</div></div>';
+  html += '</div>';
+
+  /* Two-column chart area */
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem;">';
+
+  /* Status distribution chart */
+  html += '<div class="board-chart-card">';
+  html += '<div class="board-chart-title">Status Distribution</div>';
+  if (statusCol && totalTasks > 0) {
+    html += '<div class="board-chart-segments">';
+    var statusKeys = Object.keys(statusCounts);
+    statusKeys.forEach(function(s) {
+      if (statusCounts[s] > 0) {
+        var pct = Math.round((statusCounts[s] / totalTasks) * 100);
+        html += '<div class="board-chart-segment" style="width:' + pct + '%;background:' + (statusColors[s] || '#c4c4c4') + ';" title="' + escapeHtml(s) + ': ' + statusCounts[s] + ' (' + pct + '%)"></div>';
+      }
+    });
+    if (noStatus > 0) {
+      var nsPct = Math.round((noStatus / totalTasks) * 100);
+      html += '<div class="board-chart-segment" style="width:' + nsPct + '%;background:#e8e8e8;" title="No Status: ' + noStatus + ' (' + nsPct + '%)"></div>';
+    }
+    html += '</div>';
+    /* Legend */
+    html += '<div style="display:flex;flex-wrap:wrap;gap:0.75rem;margin-top:0.75rem;">';
+    statusKeys.forEach(function(s) {
+      if (statusCounts[s] > 0) {
+        html += '<div style="display:flex;align-items:center;gap:0.25rem;font-size:var(--text-xs);">';
+        html += '<div style="width:8px;height:8px;border-radius:2px;background:' + (statusColors[s] || '#c4c4c4') + ';"></div>';
+        html += '<span>' + escapeHtml(s) + ' (' + statusCounts[s] + ')</span></div>';
+      }
+    });
+    html += '</div>';
+  } else {
+    html += '<div style="color:var(--color-tx-faint);font-size:var(--text-xs);padding:1rem;">No status data</div>';
+  }
+  html += '</div>';
+
+  /* Tasks by person chart */
+  html += '<div class="board-chart-card">';
+  html += '<div class="board-chart-title">Tasks by Person</div>';
+  var personKeys = Object.keys(personCounts);
+  if (personKeys.length > 0) {
+    var maxPerson = Math.max.apply(null, personKeys.map(function(k) { return personCounts[k]; }));
+    html += '<div class="board-chart-bar-container">';
+    personKeys.sort(function(a, b) { return personCounts[b] - personCounts[a]; });
+    personKeys.forEach(function(name) {
+      var pct = maxPerson > 0 ? Math.round((personCounts[name] / maxPerson) * 100) : 0;
+      html += '<div class="board-chart-bar-row">';
+      html += '<div class="board-chart-bar-label">' + escapeHtml(name) + '</div>';
+      html += '<div class="board-chart-bar-track"><div class="board-chart-bar" style="width:' + pct + '%;background:var(--color-primary);"></div></div>';
+      html += '<div class="board-chart-bar-value">' + personCounts[name] + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  } else {
+    html += '<div style="color:var(--color-tx-faint);font-size:var(--text-xs);padding:1rem;">No assigned tasks</div>';
+  }
+  html += '</div>';
+
+  html += '</div>'; /* two-column grid */
+
+  /* Group progress */
+  html += '<div class="board-chart-card" style="margin-top:1rem;">';
+  html += '<div class="board-chart-title">Group Progress</div>';
+  groupProgress.forEach(function(gp) {
+    html += '<div style="margin-bottom:0.75rem;">';
+    html += '<div style="display:flex;justify-content:space-between;font-size:var(--text-xs);margin-bottom:0.25rem;">';
+    html += '<span style="font-weight:500;">' + escapeHtml(gp.name) + '</span>';
+    html += '<span style="color:var(--color-tx-muted);">' + gp.done + '/' + gp.total + ' (' + gp.pct + '%)</span>';
+    html += '</div>';
+    html += '<div class="board-progress-bar"><div class="board-progress-fill" style="width:' + gp.pct + '%;background:' + gp.color + ';"></div></div>';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  /* Recent activity */
+  html += '<div class="board-chart-card" style="margin-top:1rem;">';
+  html += '<div class="board-chart-title">Recent Activity</div>';
+  html += '<div id="dashboard-board-activity"><div class="skeleton" style="height:100px;"></div></div>';
+  html += '</div>';
+
+  html += '</div>'; /* board-dashboard */
+
+  container.innerHTML = html;
+
+  /* Load recent activity */
+  loadDashboardActivity();
+}
+
+async function loadDashboardActivity() {
+  var container = document.getElementById('dashboard-board-activity');
+  if (!container) return;
+  try {
+    /* Fetch recent activity for all tasks on this board */
+    var taskIds = _boardTasks.map(function(t) { return t.id; });
+    if (taskIds.length === 0) {
+      container.innerHTML = '<div style="color:var(--color-tx-faint);font-size:var(--text-xs);padding:0.5rem;">No activity yet</div>';
+      return;
+    }
+    var result = await resilientQuery(function() {
+      return sb.from('hq_task_activity').select('*').in('task_id', taskIds).order('created_at', { ascending: false }).limit(10);
+    }, 'dashboardActivity');
+    var activities = (result && result.data) || [];
+    if (activities.length === 0) {
+      container.innerHTML = '<div style="color:var(--color-tx-faint);font-size:var(--text-xs);padding:0.5rem;">No activity yet</div>';
+      return;
+    }
+    var html = '';
+    activities.forEach(function(a) {
+      var task = _boardTasks.find(function(t) { return t.id === a.task_id; });
+      var taskTitle = task ? task.title : 'Unknown';
+      var desc = formatActivityDescription(a);
+      html += '<div class="board-activity-item">';
+      html += '<div class="activity-dot" style="background:' + getActivityDotColor(a.action) + ';"></div>';
+      html += '<div style="flex:1;min-width:0;">';
+      html += '<div class="board-activity-text">' + desc + ' <span style="color:var(--color-tx-muted);">on "' + escapeHtml(taskTitle) + '"</span></div>';
+      html += '<div class="board-activity-time">' + timeAgo(a.created_at) + '</div>';
+      html += '</div></div>';
+    });
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = '<div style="color:var(--color-error);font-size:var(--text-xs);">Failed to load activity</div>';
+  }
+}
+
+
+/* ═══ PHASE 8: KANBAN VIEW ═══ */
+
+var _kanbanDragTaskId = null;
+
+function renderKanbanView() {
+  var container = document.getElementById('board-kanban-container');
+  if (!container) return;
+
+  /* Find first status column */
+  var statusCol = _boardColumns.find(function(c) { return c.type === 'status'; });
+  if (!statusCol) {
+    container.innerHTML = '<div class="empty-state" style="padding:3rem;"><div class="empty-state-title">No status column</div><div class="empty-state-text">Add a Status column to your board to use Kanban view.</div></div>';
+    return;
+  }
+
+  var labels = (statusCol.settings && statusCol.settings.labels) || [];
+  /* Add "No Status" lane */
+  var lanes = [{ name: 'No Status', color: '#e8e8e8' }].concat(labels);
+
+  /* Group tasks by status */
+  var tasksByStatus = {};
+  lanes.forEach(function(l) { tasksByStatus[l.name] = []; });
+
+  _boardTasks.forEach(function(t) {
+    var val = (_boardTaskValues[t.id] && _boardTaskValues[t.id][statusCol.id]) || '';
+    var laneName = val || 'No Status';
+    if (!tasksByStatus[laneName]) tasksByStatus[laneName] = [];
+    tasksByStatus[laneName].push(t);
+  });
+
+  /* Find person and date columns for card meta */
+  var personCol = _boardColumns.find(function(c) { return c.type === 'person'; });
+  var dateCol = _boardColumns.find(function(c) { return c.type === 'date'; });
+  var priorityCol = _boardColumns.find(function(c) { return c.type === 'priority'; });
+
+  var html = '<div class="kanban-container">';
+
+  lanes.forEach(function(lane) {
+    var laneTasks = tasksByStatus[lane.name] || [];
+    html += '<div class="kanban-column" data-status="' + escapeHtml(lane.name) + '" ondragover="event.preventDefault();this.classList.add(\'drop-target\')" ondragleave="this.classList.remove(\'drop-target\')" ondrop="kanbanDrop(event,\'' + escapeHtml(lane.name) + '\')">';
+
+    /* Column header */
+    html += '<div class="kanban-column-header" style="border-top:3px solid ' + lane.color + ';">';
+    html += '<span>' + escapeHtml(lane.name) + '</span>';
+    html += '<span class="kanban-column-count">' + laneTasks.length + '</span>';
+    html += '</div>';
+
+    /* Cards */
+    laneTasks.forEach(function(t) {
+      /* Person info */
+      var personVal = personCol ? ((_boardTaskValues[t.id] && _boardTaskValues[t.id][personCol.id]) || '') : '';
+      var person = personVal ? _boardStaff.find(function(s) { return s.auth_user_id === personVal || s.id === personVal; }) : null;
+      var pInitials = person ? ((person.first_name || '').charAt(0) + (person.last_name || '').charAt(0)) : '';
+      var pColor = personVal ? PERSON_COLORS[Math.abs(hashStr(personVal)) % PERSON_COLORS.length] : '';
+
+      /* Date info */
+      var dateVal = dateCol ? ((_boardTaskValues[t.id] && _boardTaskValues[t.id][dateCol.id]) || '') : '';
+      var isOverdue = false;
+      if (dateVal) {
+        var dd = new Date(dateVal);
+        var nowD = new Date(); nowD.setHours(0, 0, 0, 0);
+        isOverdue = dd < nowD && lane.name !== 'Done' && lane.name !== 'Completed';
+      }
+
+      /* Priority info */
+      var priVal = priorityCol ? ((_boardTaskValues[t.id] && _boardTaskValues[t.id][priorityCol.id]) || '') : '';
+      var priColor = '';
+      if (priVal && priorityCol.settings && priorityCol.settings.labels) {
+        var priLabel = priorityCol.settings.labels.find(function(l) { return l.name === priVal; });
+        if (priLabel) priColor = priLabel.color;
+      }
+
+      /* Group color */
+      var grp = _boardGroups.find(function(g) { return g.id === t.group_id; });
+      var grpColor = grp ? grp.color : '#c4c4c4';
+
+      html += '<div class="kanban-card" data-task-id="' + t.id + '" draggable="true" ondragstart="kanbanDragStart(event,\'' + t.id + '\')" ondragend="kanbanDragEnd(event)" onclick="openDetailPanel(\'' + t.id + '\')">';
+
+      if (priVal) {
+        html += '<div class="kanban-card-priority" style="background:' + (priColor || '#c4c4c4') + ';">' + escapeHtml(priVal) + '</div>';
+      }
+
+      html += '<div class="kanban-card-title">' + escapeHtml(t.title) + '</div>';
+      html += '<div class="kanban-card-meta">';
+      html += '<div style="display:flex;align-items:center;gap:0.25rem;">';
+      html += '<div style="width:4px;height:4px;border-radius:50%;background:' + grpColor + ';"></div>';
+      html += '<span style="font-size:0.625rem;color:var(--color-tx-faint);">' + escapeHtml(grp ? grp.name : '') + '</span>';
+      html += '</div>';
+
+      html += '<div style="display:flex;align-items:center;gap:0.375rem;">';
+      if (dateVal) {
+        html += '<span class="kanban-card-date' + (isOverdue ? ' overdue' : '') + '">' + formatDate(dateVal) + '</span>';
+      }
+      if (pInitials) {
+        html += '<div class="kanban-card-avatar" style="background:' + pColor + ';">' + escapeHtml(pInitials) + '</div>';
+      }
+      html += '</div>';
+
+      html += '</div>'; /* kanban-card-meta */
+      html += '</div>'; /* kanban-card */
+    });
+
+    html += '</div>'; /* kanban-column */
+  });
+
+  html += '</div>'; /* kanban-container */
+
+  container.innerHTML = html;
+}
+
+function kanbanDragStart(event, taskId) {
+  _kanbanDragTaskId = taskId;
+  event.dataTransfer.setData('text/plain', taskId);
+  event.currentTarget.classList.add('dragging');
+}
+
+function kanbanDragEnd(event) {
+  _kanbanDragTaskId = null;
+  event.currentTarget.classList.remove('dragging');
+  /* Remove drop-target from all columns */
+  var cols = document.querySelectorAll('.kanban-column');
+  for (var i = 0; i < cols.length; i++) cols[i].classList.remove('drop-target');
+}
+
+function kanbanDrop(event, statusName) {
+  event.preventDefault();
+  var col = event.currentTarget;
+  col.classList.remove('drop-target');
+
+  var taskId = event.dataTransfer.getData('text/plain');
+  if (!taskId) return;
+
+  var statusCol = _boardColumns.find(function(c) { return c.type === 'status'; });
+  if (!statusCol) return;
+
+  var newVal = statusName === 'No Status' ? '' : statusName;
+  saveCellValue(taskId, statusCol.id, newVal);
+
+  /* Re-render kanban */
+  setTimeout(function() { renderKanbanView(); }, 100);
+}
+
 
 /* ─── Keyboard Navigation ─── */
 document.addEventListener('keydown', function(e) {

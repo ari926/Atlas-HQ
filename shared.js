@@ -227,7 +227,13 @@ var dataCache = {
   staffList: null, staffListTime: 0,
   boardGroups: null, boardGroupsTime: 0,
   boardColumns: null, boardColumnsTime: 0,
-  taskValues: null, taskValuesTime: 0
+  taskValues: null, taskValuesTime: 0,
+  taskComments: null, taskCommentsTime: 0,
+  taskActivity: null, taskActivityTime: 0,
+  taskAttachments: null, taskAttachmentsTime: 0,
+  boardTemplates: null, boardTemplatesTime: 0,
+  notifications: null, notificationsTime: 0,
+  notifPrefs: null, notifPrefsTime: 0
 };
 
 function isCacheValid(key) {
@@ -347,6 +353,144 @@ async function fetchTaskValues(taskIds, force) {
   }, 'fetchTaskValues');
   if (result.data) { dataCache.taskValues = result.data; dataCache.taskValuesTime = Date.now(); }
   return result.data || [];
+}
+
+/* ─── Task Comments ─── */
+async function fetchTaskComments(taskId, force) {
+  if (!force && isCacheValid('taskComments') && dataCache._taskCommentsTaskId === taskId) return dataCache.taskComments;
+  var result = await resilientQuery(function() {
+    return sb.from('hq_task_comments').select('*').eq('task_id', taskId).order('created_at', { ascending: true });
+  }, 'fetchTaskComments');
+  if (result.data) { dataCache.taskComments = result.data; dataCache.taskCommentsTime = Date.now(); dataCache._taskCommentsTaskId = taskId; }
+  return result.data || [];
+}
+
+/* ─── Task Activity ─── */
+async function fetchTaskActivity(taskId, force) {
+  if (!force && isCacheValid('taskActivity') && dataCache._taskActivityTaskId === taskId) return dataCache.taskActivity;
+  var result = await resilientQuery(function() {
+    return sb.from('hq_task_activity').select('*').eq('task_id', taskId).order('created_at', { ascending: false }).limit(50);
+  }, 'fetchTaskActivity');
+  if (result.data) { dataCache.taskActivity = result.data; dataCache.taskActivityTime = Date.now(); dataCache._taskActivityTaskId = taskId; }
+  return result.data || [];
+}
+
+/* ─── Task Attachments ─── */
+async function fetchTaskAttachments(taskId, force) {
+  if (!taskId) return [];
+  if (!force && isCacheValid('taskAttachments') && dataCache._taskAttachmentsTaskId === taskId) return dataCache.taskAttachments;
+  var result = await resilientQuery(function() {
+    return sb.from('hq_task_attachments').select('*').eq('task_id', taskId).order('created_at', { ascending: false });
+  }, 'fetchTaskAttachments');
+  if (result.data) { dataCache.taskAttachments = result.data; dataCache.taskAttachmentsTime = Date.now(); dataCache._taskAttachmentsTaskId = taskId; }
+  return result.data || [];
+}
+
+/* ─── Board Templates ─── */
+async function fetchBoardTemplates(force) {
+  if (!force && isCacheValid('boardTemplates')) return dataCache.boardTemplates;
+  var result = await resilientQuery(function() {
+    return sb.from('hq_board_templates').select('*').order('is_system', { ascending: false }).order('name', { ascending: true });
+  }, 'fetchBoardTemplates');
+  if (result.data) { dataCache.boardTemplates = result.data; dataCache.boardTemplatesTime = Date.now(); }
+  return result.data || [];
+}
+
+/* ─── Log Activity (fire-and-forget) ─── */
+function logTaskActivity(taskId, action, fieldName, oldValue, newValue) {
+  if (!sb || !taskId) return;
+  var userName = (currentProfile && currentProfile.full_name) || (currentUser && currentUser.email) || 'Unknown';
+  var userId = currentUser ? currentUser.id : null;
+  resilientWrite(function() {
+    return sb.from('hq_task_activity').insert({
+      task_id: taskId,
+      user_id: userId,
+      user_name: userName,
+      action: action,
+      field_name: fieldName || null,
+      old_value: oldValue ? String(oldValue) : null,
+      new_value: newValue ? String(newValue) : null
+    });
+  }, 'logTaskActivity').catch(function(err) {
+    console.error('[logTaskActivity]', err);
+  });
+  /* Invalidate activity cache for this task */
+  if (dataCache._taskActivityTaskId === taskId) clearCache('taskActivity');
+}
+
+/* ─── Notifications ─── */
+async function fetchNotifications(force) {
+  if (!currentUser) return [];
+  if (!force && isCacheValid('notifications')) return dataCache.notifications;
+  var result = await resilientQuery(function() {
+    return sb.from('hq_notifications').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50);
+  }, 'fetchNotifications');
+  if (result.data) { dataCache.notifications = result.data; dataCache.notificationsTime = Date.now(); }
+  return result.data || [];
+}
+
+async function markNotificationRead(notifId) {
+  try {
+    await resilientWrite(function() {
+      return sb.from('hq_notifications').update({ is_read: true }).eq('id', notifId);
+    }, 'markNotifRead');
+    clearCache('notifications');
+  } catch (err) { console.error('[markNotifRead]', err); }
+}
+
+async function markAllNotificationsRead() {
+  if (!currentUser) return;
+  try {
+    await resilientWrite(function() {
+      return sb.from('hq_notifications').update({ is_read: true }).eq('user_id', currentUser.id).eq('is_read', false);
+    }, 'markAllNotifsRead');
+    clearCache('notifications');
+  } catch (err) { console.error('[markAllNotifsRead]', err); }
+}
+
+function sendInAppNotification(userId, title, body, linkTo, taskId) {
+  if (!sb || !userId) return;
+  /* Don't notify yourself */
+  if (currentUser && userId === currentUser.id) return;
+  resilientWrite(function() {
+    return sb.from('hq_notifications').insert({
+      user_id: userId,
+      title: title,
+      body: body || null,
+      link_to: linkTo || null,
+      task_id: taskId || null,
+      is_read: false
+    });
+  }, 'sendInAppNotification').catch(function(err) {
+    console.error('[sendInAppNotification]', err);
+  });
+}
+
+async function fetchNotifPrefs(force) {
+  if (!currentUser) return null;
+  if (!force && isCacheValid('notifPrefs')) return dataCache.notifPrefs;
+  var result = await resilientQuery(function() {
+    return sb.from('hq_notification_preferences').select('*').eq('user_id', currentUser.id).single();
+  }, 'fetchNotifPrefs');
+  if (result.data && !result.error) { dataCache.notifPrefs = result.data; dataCache.notifPrefsTime = Date.now(); }
+  return result.data || null;
+}
+
+async function saveNotifPrefs(prefs) {
+  if (!currentUser) return;
+  try {
+    await resilientWrite(function() {
+      return sb.from('hq_notification_preferences').upsert({
+        user_id: currentUser.id,
+        email_on_assign: prefs.email_on_assign !== false,
+        email_on_comment: prefs.email_on_comment !== false,
+        email_on_mention: prefs.email_on_mention !== false,
+        email_on_due_date: prefs.email_on_due_date !== false,
+        in_app_enabled: prefs.in_app_enabled !== false
+      }, { onConflict: 'user_id' });
+    }, 'saveNotifPrefs');
+    clearCache('notifPrefs');
+  } catch (err) { showToast('Failed to save notification preferences.', 'error'); }
 }
 
 async function initBoardDefaults(projectId) {
@@ -839,6 +983,104 @@ function disconnectGoogleDrive() {
   if (typeof renderDocuments === 'function') renderDocuments();
 }
 
+/* ─── Notification UI ─── */
+var _notifPollTimer = null;
+
+function toggleNotifDropdown() {
+  var dd = document.getElementById('notif-dropdown');
+  if (!dd) return;
+  var isOpen = dd.classList.contains('open');
+  if (isOpen) {
+    dd.classList.remove('open');
+  } else {
+    dd.classList.add('open');
+    loadNotifications();
+    /* Close on outside click */
+    setTimeout(function() {
+      document.addEventListener('click', function handler(e) {
+        var dd2 = document.getElementById('notif-dropdown');
+        var btn = document.getElementById('notif-bell-btn');
+        if (dd2 && !dd2.contains(e.target) && btn && !btn.contains(e.target)) {
+          dd2.classList.remove('open');
+          document.removeEventListener('click', handler);
+        }
+      });
+    }, 10);
+  }
+}
+
+async function loadNotifications() {
+  var body = document.getElementById('notif-dropdown-body');
+  if (!body) return;
+  try {
+    var notifs = await fetchNotifications(true);
+    if (notifs.length === 0) {
+      body.innerHTML = '<div class="notif-empty">No notifications</div>';
+    } else {
+      var html = '';
+      notifs.forEach(function(n) {
+        html += '<div class="notif-item' + (n.is_read ? '' : ' unread') + '" onclick="onNotifClick(\'' + n.id + '\',\'' + escapeHtml(n.link_to || '') + '\')">';
+        html += '<div class="notif-dot"></div>';
+        html += '<div style="flex:1;min-width:0;">';
+        html += '<div class="notif-title">' + escapeHtml(n.title) + '</div>';
+        if (n.body) html += '<div class="notif-body">' + escapeHtml(n.body) + '</div>';
+        html += '<div class="notif-time">' + (typeof timeAgo === 'function' ? timeAgo(n.created_at) : formatDateTime(n.created_at)) + '</div>';
+        html += '</div></div>';
+      });
+      body.innerHTML = html;
+    }
+    updateNotifBadge(notifs);
+  } catch (err) {
+    body.innerHTML = '<div class="notif-empty">Failed to load notifications</div>';
+  }
+}
+
+function updateNotifBadge(notifs) {
+  var badge = document.getElementById('notif-count-badge');
+  if (!badge) return;
+  var unread = 0;
+  if (notifs) {
+    for (var i = 0; i < notifs.length; i++) {
+      if (!notifs[i].is_read) unread++;
+    }
+  }
+  if (unread > 0) {
+    badge.textContent = unread > 99 ? '99+' : String(unread);
+    badge.style.display = 'flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+async function onNotifClick(notifId, linkTo) {
+  await markNotificationRead(notifId);
+  loadNotifications();
+  if (linkTo) {
+    var dd = document.getElementById('notif-dropdown');
+    if (dd) dd.classList.remove('open');
+    var hash = linkTo.replace('#', '');
+    navigateTo(hash);
+  }
+}
+
+function startNotifPolling() {
+  if (_notifPollTimer) clearInterval(_notifPollTimer);
+  /* Poll every 60 seconds for new notifications */
+  _notifPollTimer = setInterval(function() {
+    if (isAuthenticated) {
+      fetchNotifications(true).then(function(notifs) {
+        updateNotifBadge(notifs);
+      }).catch(function() {});
+    }
+  }, 60000);
+  /* Initial load */
+  if (isAuthenticated) {
+    fetchNotifications(true).then(function(notifs) {
+      updateNotifBadge(notifs);
+    }).catch(function() {});
+  }
+}
+
 /* ─── Init on DOM Ready ─── */
 document.addEventListener('DOMContentLoaded', function() {
   if (!sb) initSupabaseClient();
@@ -848,4 +1090,8 @@ document.addEventListener('DOMContentLoaded', function() {
     initGapiClient();
     initGisClient();
   }, 500);
+  /* Start notification polling after auth */
+  setTimeout(function() {
+    startNotifPolling();
+  }, 3000);
 });
