@@ -504,7 +504,7 @@ async function initBoardDefaults(projectId) {
 
   /* Create 5 default columns */
   var columns = [
-    { project_id: projectId, name: 'Status', type: 'status', sort_order: 0, width: 140,
+    { project_id: projectId, name: 'Status', type: 'status', sort_order: 0, width: 160,
       settings: { labels: [
         { name: 'Not Started', color: '#c4c4c4' },
         { name: 'Working on it', color: '#fdab3d' },
@@ -513,9 +513,9 @@ async function initBoardDefaults(projectId) {
         { name: 'Planning', color: '#a25ddc' },
         { name: 'Review', color: '#0086c0' }
       ]}},
-    { project_id: projectId, name: 'Person', type: 'person', sort_order: 1, width: 120, settings: {} },
-    { project_id: projectId, name: 'Due Date', type: 'date', sort_order: 2, width: 130, settings: {} },
-    { project_id: projectId, name: 'Priority', type: 'priority', sort_order: 3, width: 120,
+    { project_id: projectId, name: 'Person', type: 'person', sort_order: 1, width: 140, settings: {} },
+    { project_id: projectId, name: 'Due Date', type: 'date', sort_order: 2, width: 150, settings: {} },
+    { project_id: projectId, name: 'Priority', type: 'priority', sort_order: 3, width: 140,
       settings: { labels: [
         { name: 'Critical', color: '#e2445c' },
         { name: 'High', color: '#fdab3d' },

@@ -122,9 +122,11 @@ function renderBoard(container, projects) {
     html += '<option value="' + p.id + '"' + (p.id === _currentProjectId ? ' selected' : '') + '>' + escapeHtml(p.name) + '</option>';
   });
   html += '</select>';
-  html += '<button class="btn btn-sm btn-ghost" onclick="openProjectModal(_currentProjectId)">Settings</button>';
-  html += '<button class="btn btn-sm btn-outline" onclick="openAutomationsPanel()">&#9889; Automations</button>';
-  html += '<button class="btn btn-sm btn-outline" onclick="saveCurrentAsTemplate(_currentProjectId)" title="Save as Template">&#9733; Template</button>';
+  html += '<div class="board-selector-separator"></div>';
+  html += '<button class="btn btn-sm btn-ghost" onclick="openProjectModal(_currentProjectId)" title="Board Settings"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>';
+  html += '<button class="btn btn-sm btn-ghost" onclick="openAutomationsPanel()" title="Automations">&#9889;</button>';
+  html += '<button class="btn btn-sm btn-ghost" onclick="saveCurrentAsTemplate(_currentProjectId)" title="Save as Template">&#9733;</button>';
+  html += '<div class="board-selector-separator"></div>';
   html += '<button class="btn btn-sm btn-primary" onclick="openProjectModalWithTemplates()">+ New Board</button>';
   html += '<span class="board-save-indicator" id="board-save-status"><span class="board-save-dot"></span> Auto-saved</span>';
   html += '</div>';
@@ -169,7 +171,7 @@ function renderBoard(container, projects) {
   html += '<div class="board-col-header' + (_boardSortCol === 'title' ? ' sorted' : '') + '" onclick="toggleSort(\'title\')" style="cursor:pointer;">Item<span class="board-sort-icon">' + (_boardSortCol === 'title' ? (_boardSortDir === 'asc' ? '&#9650;' : '&#9660;') : '&#9650;') + '</span></div>';
   _boardColumns.forEach(function(col) {
     var isSorted = _boardSortCol === col.id;
-    html += '<div class="board-col-header' + (isSorted ? ' sorted' : '') + '" data-col-id="' + col.id + '" onclick="toggleSort(\'' + col.id + '\')" style="cursor:pointer;">';
+    html += '<div class="board-col-header' + (isSorted ? ' sorted' : '') + '" data-col-id="' + col.id + '" onclick="toggleSort(\'' + col.id + '\')" style="cursor:pointer;" title="' + escapeHtml(col.name) + '">';
     html += '<span ondblclick="event.stopPropagation();editColumnName(this,\'' + col.id + '\')">' + escapeHtml(col.name) + '</span>';
     html += '<span class="board-sort-icon">' + (isSorted ? (_boardSortDir === 'asc' ? '&#9650;' : '&#9660;') : '&#9650;') + '</span>';
     html += '<div class="board-col-resize" onmousedown="event.stopPropagation();startColumnResize(event,\'' + col.id + '\')"></div>';
@@ -187,8 +189,8 @@ function renderBoard(container, projects) {
     html += '<div class="board-group" data-group-id="' + group.id + '">';
 
     /* Group header */
-    html += '<div class="board-group-header" style="border-left:4px solid ' + group.color + ';background:' + group.color + '18;" onclick="toggleGroupCollapse(\'' + group.id + '\')">';
-    html += '<span class="board-group-toggle' + (isCollapsed ? ' collapsed' : '') + '"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 2l4 4-4 4"/></svg></span>';
+    html += '<div class="board-group-header" style="border-left:6px solid ' + group.color + ';background:' + group.color + '20;" onclick="toggleGroupCollapse(\'' + group.id + '\')">';
+    html += '<span class="board-group-toggle' + (isCollapsed ? ' collapsed' : '') + '"><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M4 2l4 4-4 4"/></svg></span>';
     html += '<span class="board-group-name" onclick="event.stopPropagation()" ondblclick="this.contentEditable=true;this.focus()" onblur="saveGroupName(this,\'' + group.id + '\')" onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur()}">' + escapeHtml(group.name) + '</span>';
     html += '<span class="board-group-count">' + groupTasks.length + ' item' + (groupTasks.length !== 1 ? 's' : '') + '</span>';
     html += '<button class="board-group-menu" onclick="event.stopPropagation();openGroupMenu(event,\'' + group.id + '\')">&#8943;</button>';
@@ -200,7 +202,7 @@ function renderBoard(container, projects) {
     /* Task rows */
     groupTasks.forEach(function(task) {
       var isSelected = _boardSelectedTasks[task.id];
-      html += '<div class="board-row' + (isSelected ? ' selected' : '') + '" data-task-id="' + task.id + '" style="grid-template-columns:' + colWidths + ';" draggable="true" ondragstart="onTaskDragStart(event,\'' + task.id + '\')" ondragend="onTaskDragEnd(event)" oncontextmenu="openRowContextMenu(event,\'' + task.id + '\')">';
+      html += '<div class="board-row' + (isSelected ? ' selected' : '') + '" data-task-id="' + task.id + '" style="grid-template-columns:' + colWidths + ';--group-color:' + group.color + ';" draggable="true" ondragstart="onTaskDragStart(event,\'' + task.id + '\')" ondragend="onTaskDragEnd(event)" oncontextmenu="openRowContextMenu(event,\'' + task.id + '\')">';
       html += '<div class="board-cell-checkbox"><input type="checkbox"' + (isSelected ? ' checked' : '') + ' onclick="event.stopPropagation();toggleTaskSelect(\'' + task.id + '\',this.checked)"></div>';
       html += '<div class="board-cell board-cell-name" onclick="startNameEdit(this,\'' + task.id + '\')" ondblclick="event.stopPropagation();openDetailPanel(\'' + task.id + '\')">' + escapeHtml(task.title) + '</div>';
 
@@ -235,7 +237,7 @@ function renderBoard(container, projects) {
     /* Add item row */
     html += '<div class="board-add-item" style="grid-template-columns:' + colWidths + ';">';
     html += '<div></div>';
-    html += '<div><input type="text" class="board-add-item-input" placeholder="+ Add item" onkeydown="if(event.key===\'Enter\'&&this.value.trim()){addTaskToGroup(\'' + group.id + '\',this.value.trim());this.value=\'\';}" data-group-id="' + group.id + '"></div>';
+    html += '<div style="display:flex;align-items:center;gap:0.25rem;padding-left:0.5rem;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--color-tx-faint);flex-shrink:0;"><path d="M12 5v14M5 12h14"/></svg><input type="text" class="board-add-item-input" placeholder="Add item" onkeydown="if(event.key===\'Enter\'&&this.value.trim()){addTaskToGroup(\'' + group.id + '\',this.value.trim());this.value=\'\';}" data-group-id="' + group.id + '"></div>';
     for (var ci = 0; ci < _boardColumns.length + 1; ci++) html += '<div></div>';
     html += '</div>';
 
@@ -306,26 +308,28 @@ function renderCellContent(task, col, val) {
       if (!val) return '<div class="board-status-empty" onclick="event.stopPropagation();openStatusPicker(event,\'' + task.id + '\',\'' + col.id + '\')"></div>';
       var statusLabel = labels.find(function(l) { return l.name === val; });
       var statusColor = statusLabel ? statusLabel.color : '#c4c4c4';
-      return '<div class="board-status-pill" style="background:' + statusColor + ';" onclick="event.stopPropagation();openStatusPicker(event,\'' + task.id + '\',\'' + col.id + '\')">' + escapeHtml(val) + '</div>';
+      var isLightStatus = _isLightColor(statusColor);
+      return '<div class="board-status-pill' + (isLightStatus ? ' light-bg' : '') + '" style="background:' + statusColor + ';" onclick="event.stopPropagation();openStatusPicker(event,\'' + task.id + '\',\'' + col.id + '\')">' + escapeHtml(val) + '</div>';
 
     case 'person':
-      if (!val) return '<div class="board-person-empty" onclick="event.stopPropagation();openPersonPicker(event,\'' + task.id + '\',\'' + col.id + '\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>';
+      if (!val) return '<div class="board-person-empty" onclick="event.stopPropagation();openPersonPicker(event,\'' + task.id + '\',\'' + col.id + '\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>';
       var person = _boardStaff.find(function(s) { return s.auth_user_id === val || s.id === val; });
       var pName = person ? ((person.first_name || '') + ' ' + (person.last_name || '')).trim() : 'Unknown';
-      var pInitials = person ? (person.first_name || '').charAt(0) + (person.last_name || '').charAt(0) : '?';
+      var pInitials = person ? ((person.first_name || '').charAt(0) + (person.last_name || '').charAt(0)).toUpperCase() : '?';
       var pColor = PERSON_COLORS[Math.abs(hashStr(val)) % PERSON_COLORS.length];
       return '<div class="board-person-avatar" style="background:' + pColor + ';" onclick="event.stopPropagation();openPersonPicker(event,\'' + task.id + '\',\'' + col.id + '\')" title="' + escapeHtml(pName) + '">' + escapeHtml(pInitials) + '</div>';
 
     case 'date':
       if (!val) return '<span class="board-date-display" onclick="event.stopPropagation();startDateEdit(this,\'' + task.id + '\',\'' + col.id + '\')">—</span>';
-      return '<span class="board-date-display" onclick="event.stopPropagation();startDateEdit(this,\'' + task.id + '\',\'' + col.id + '\')">' + formatDate(val) + '</span>';
+      return '<span class="board-date-display" onclick="event.stopPropagation();startDateEdit(this,\'' + task.id + '\',\'' + col.id + '\')"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;opacity:0.5;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' + formatDate(val) + '</span>';
 
     case 'priority':
       labels = settings.labels || [];
       if (!val) return '<div class="board-status-empty" onclick="event.stopPropagation();openPriorityPicker(event,\'' + task.id + '\',\'' + col.id + '\')"></div>';
       var priLabel = labels.find(function(l) { return l.name === val; });
       var priColor = priLabel ? priLabel.color : '#c4c4c4';
-      return '<div class="board-priority-label" style="background:' + priColor + ';" onclick="event.stopPropagation();openPriorityPicker(event,\'' + task.id + '\',\'' + col.id + '\')">' + escapeHtml(val) + '</div>';
+      var isLightPri = _isLightColor(priColor);
+      return '<div class="board-priority-label' + (isLightPri ? ' light-bg' : '') + '" style="background:' + priColor + ';" onclick="event.stopPropagation();openPriorityPicker(event,\'' + task.id + '\',\'' + col.id + '\')">' + escapeHtml(val) + '</div>';
 
     case 'checkbox':
       return '<input type="checkbox"' + (val === 'true' ? ' checked' : '') + ' onchange="saveCellValue(\'' + task.id + '\',\'' + col.id + '\',this.checked?\'true\':\'false\')" onclick="event.stopPropagation()" style="width:16px;height:16px;cursor:pointer;">';
@@ -343,6 +347,19 @@ function hashStr(str) {
   var hash = 0;
   for (var i = 0; i < (str || '').length; i++) { hash = ((hash << 5) - hash) + str.charCodeAt(i); hash |= 0; }
   return hash;
+}
+
+/* Determine if a hex color is light (needs dark text) */
+function _isLightColor(hex) {
+  if (!hex || hex.charAt(0) !== '#') return false;
+  var c = hex.replace('#', '');
+  if (c.length === 3) c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+  var r = parseInt(c.substring(0, 2), 16);
+  var g = parseInt(c.substring(2, 4), 16);
+  var b = parseInt(c.substring(4, 6), 16);
+  /* Perceived luminance formula */
+  var luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.65;
 }
 
 /* ─── Inline Editing ─── */
@@ -399,7 +416,7 @@ function startDateEdit(el, taskId, colId) {
 
 function renderDateDisplay(val, taskId, colId) {
   if (!val) return '<span class="board-date-display" onclick="event.stopPropagation();startDateEdit(this,\'' + taskId + '\',\'' + colId + '\')">—</span>';
-  return '<span class="board-date-display" onclick="event.stopPropagation();startDateEdit(this,\'' + taskId + '\',\'' + colId + '\')">' + formatDate(val) + '</span>';
+  return '<span class="board-date-display" onclick="event.stopPropagation();startDateEdit(this,\'' + taskId + '\',\'' + colId + '\')"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;opacity:0.5;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' + formatDate(val) + '</span>';
 }
 
 /* ─── Save Cell Value ─── */
@@ -760,7 +777,7 @@ async function addColumn(type) {
         name: names[type] || 'Column',
         type: type,
         sort_order: maxOrder + 1,
-        width: type === 'text' ? 200 : 150,
+        width: type === 'text' ? 200 : (type === 'status' || type === 'priority' ? 160 : 150),
         settings: settings
       });
     }, 'addColumn');
@@ -1337,16 +1354,19 @@ function getSummaryForColumn(col, tasks) {
   }
   if (col.type === 'status' || col.type === 'priority') {
     var counts = {};
+    var colLabels = (col.settings && col.settings.labels) || [];
     tasks.forEach(function(t) {
       var v = (_boardTaskValues[t.id] && _boardTaskValues[t.id][col.id]) || '';
       if (v) counts[v] = (counts[v] || 0) + 1;
     });
     var entries = Object.keys(counts);
     if (entries.length === 0) return '';
-    if (entries.length === 1) return counts[entries[0]] + ' ' + entries[0];
-    /* Show top 2 */
     entries.sort(function(a, b) { return counts[b] - counts[a]; });
-    return entries.slice(0, 2).map(function(k) { return counts[k] + ' ' + k; }).join(', ');
+    return entries.slice(0, 3).map(function(k) {
+      var lbl = colLabels.find(function(l) { return l.name === k; });
+      var dotColor = lbl ? lbl.color : '#c4c4c4';
+      return '<span style="display:inline-flex;align-items:center;gap:2px;"><span style="width:6px;height:6px;border-radius:50%;background:' + dotColor + ';display:inline-block;flex-shrink:0;"></span>' + counts[k] + ' ' + escapeHtml(k) + '</span>';
+    }).join(' &middot; ');
   }
   if (col.type === 'checkbox') {
     var checked = 0;
