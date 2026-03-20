@@ -1419,6 +1419,72 @@ textarea.input-field {
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--color-divider);
 }
+/* Frozen first columns (checkbox + item name) — Monday.com style */
+.board-cell-checkbox,
+.board-header-row > .board-col-header:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  background: inherit;
+}
+.board-cell-name,
+.board-header-row > .board-col-header:nth-child(2) {
+  position: sticky;
+  left: 40px;
+  z-index: 4;
+  background: inherit;
+  box-shadow: 2px 0 4px oklch(0 0 0 / 0.06);
+}
+/* Ensure row backgrounds propagate to sticky cells */
+.board-row .board-cell-checkbox,
+.board-row .board-cell-name {
+  background: var(--color-surface);
+}
+.board-row:nth-child(even) .board-cell-checkbox,
+.board-row:nth-child(even) .board-cell-name {
+  background: var(--color-surface-2);
+}
+.board-row:hover .board-cell-checkbox,
+.board-row:hover .board-cell-name {
+  background: var(--color-surface-offset);
+}
+.board-row.selected .board-cell-checkbox,
+.board-row.selected .board-cell-name {
+  background: var(--color-primary-hl);
+}
+/* Header row frozen cells */
+.board-header-row > .board-col-header:first-child,
+.board-header-row > .board-col-header:nth-child(2) {
+  background: var(--color-surface-offset);
+}
+/* Summary row frozen cells */
+.board-summary-row > .board-summary-cell:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  background: var(--color-surface-offset);
+}
+.board-summary-row > .board-summary-cell:nth-child(2) {
+  position: sticky;
+  left: 40px;
+  z-index: 4;
+  background: var(--color-surface-offset);
+  box-shadow: 2px 0 4px oklch(0 0 0 / 0.06);
+}
+/* Add-item row frozen cells */
+.board-add-item > div:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  background: var(--color-surface);
+}
+.board-add-item > div:nth-child(2) {
+  position: sticky;
+  left: 40px;
+  z-index: 4;
+  background: var(--color-surface);
+  box-shadow: 2px 0 4px oklch(0 0 0 / 0.06);
+}
 /* Custom scrollbars for the board */
 .board-wrapper::-webkit-scrollbar { height: 6px; }
 .board-wrapper::-webkit-scrollbar-track { background: var(--color-surface-offset); border-radius: 3px; }
@@ -1428,10 +1494,15 @@ textarea.input-field {
   display: grid;
   position: sticky;
   top: 0;
-  z-index: 5;
+  z-index: 6;
   background: var(--color-surface-offset);
   border-bottom: 2px solid var(--color-divider);
   min-height: 38px;
+}
+/* Frozen header cells need highest z-index (both sticky-top AND sticky-left) */
+.board-header-row > .board-col-header:first-child,
+.board-header-row > .board-col-header:nth-child(2) {
+  z-index: 7;
 }
 .board-col-header {
   display: flex;
@@ -1507,8 +1578,9 @@ textarea.input-field {
   min-height: 42px;
   transition: background var(--transition-interactive);
   box-shadow: 0 1px 3px oklch(0 0 0 / 0.05);
-  position: relative;
-  z-index: 1;
+  position: sticky;
+  left: 0;
+  z-index: 3;
 }
 .board-group-header:hover { filter: brightness(0.95); }
 .board-group-toggle {
@@ -1857,6 +1929,8 @@ textarea.input-field {
 /* Add Group Button */
 .board-add-group {
   margin-top: 0.75rem;
+  position: sticky;
+  left: 0;
 }
 
 /* Group Context Menu */
