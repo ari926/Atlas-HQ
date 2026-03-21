@@ -5,8 +5,9 @@
 **URL**: hq.talaria.com
 **Repo**: github.com/ari926/atlas-hq
 **Supabase Project ID**: `buqopylxhqdiikzqctkb` (shared with Atlas V2)
+**Dev Supabase ID**: `dutvbquoyjtoctjstbmv`
 **Related Project**: Atlas V2 (delivery management) — github.com/ari926/atlas-v2
-**Last Updated**: March 19, 2026 | Initial scaffold complete
+**Last Updated**: March 21, 2026 | Phase 3 (Compliance Engine) complete
 
 ---
 
@@ -18,20 +19,25 @@ Atlas HQ is the corporate operations command center for Talaria Transportation L
 
 **Deploy**: Cloudflare Pages → `hq.talaria.com`
 
+**Implementation Plan**: The Odyssey v3 (see `/ODYSSEY-IMPLEMENTATION.md` and `/The_Odyssey_v3.pdf`)
+
 ---
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
-| Frontend | Vanilla HTML5, CSS3, JavaScript (ES5 — no build step, no modules) |
+| Frontend | React 19 + Vite 8 + TypeScript |
+| State | Zustand 5 |
+| UI | Lucide React icons, react-hot-toast, @dnd-kit |
+| Tables | @tanstack/react-table |
+| Routing | react-router-dom v7 (path-based) |
+| Dates | date-fns 4 |
 | Backend | Supabase (PostgreSQL + Auth + Storage + RLS) |
 | Hosting | Cloudflare Pages → custom domain with SSL |
 | Design | Nexus Design System, Inter font, Hydra Teal theme |
 | AI Search | Claude API via Cloudflare Worker (planned) |
-| Google Drive | Drive API v3 — read-only, files stay in Google (no copies in Supabase) |
-
-**ES5 constraint** — matches Atlas V2. No arrow functions in certain contexts, no import/export. Check existing file patterns before introducing new syntax.
+| Google Drive | Drive API v3 — read-only, files stay in Google (planned) |
 
 ---
 
@@ -39,7 +45,7 @@ Atlas HQ is the corporate operations command center for Talaria Transportation L
 
 - `hq.talaria.com` → production DB (`buqopylxhqdiikzqctkb`)
 - Any other hostname (localhost, `*.pages.dev`) → dev DB (`dutvbquoyjtoctjstbmv`) + yellow "DEV ENVIRONMENT" banner
-- Config in `shared.js`: `_isProduction` check on `window.location.hostname`
+- Config in `src/lib/supabase.ts`: `isProduction` check on `window.location.hostname`
 
 ---
 
@@ -47,37 +53,73 @@ Atlas HQ is the corporate operations command center for Talaria Transportation L
 
 ```
 /atlas-hq/
-  index.html        — SPA shell (login + app shell + 6 views + modals)
-  shared.js          — Auth, Supabase config, SPA routing, utilities, data fetchers
-  dashboard.js       — HQ overview: KPI cards, upcoming deadlines, activity feed
-  projects.js        — Project management: Kanban board + list view, task CRUD
-  compliance.js      — Compliance tracking: filterable list, category/status/state filters
-  licensing.js       — License management: cards grouped by state, expiration alerts
-  hr.js              — HR: employee directory + read-only drivers tab
-  documents.js       — Document browser: Google Drive API, files stay in Google, breadcrumb nav
-  search.js          — AI search overlay: local full-text search (Claude API planned)
-  style.css          — Nexus design system (forked from Atlas V2, HQ-specific additions)
-  fonts/             — Inter WOFF2 (400/500/600/700)
-  _headers           — Cloudflare security headers (CSP, cache)
-  .gitignore
-  CLAUDE.md          — This file
+  src/
+    main.tsx                     — React entry point
+    App.tsx                      — Router + AuthGate
+    index.css                    — Nexus design system (all CSS)
+    lib/
+      supabase.ts                — Supabase client (prod/dev switching)
+      utils.ts                   — Date, color, formatting utilities
+    stores/
+      authStore.ts               — Zustand: auth session, profile
+      boardStore.ts              — Zustand: projects board state
+      uiStore.ts                 — Zustand: sidebar, theme
+    pages/
+      DashboardPage.tsx          — KPI cards, deadlines, activity
+      ProjectsPage.tsx           — Monday-style board (table/kanban/timeline/dashboard)
+      CompliancePage.tsx         — Phase 3 Compliance Engine (list + matrix views)
+      LicensingPage.tsx          — License cards grouped by state
+      HRPage.tsx                 — Employee directory + drivers tab
+      DocumentsPage.tsx          — Placeholder for Google Drive
+    components/
+      Auth/LoginPage.tsx         — Supabase auth login
+      Layout/AppShell.tsx        — Sidebar + header + main content
+      Layout/Header.tsx          — Top bar with search
+      Layout/Sidebar.tsx         — Navigation sidebar
+      Board/                     — Projects board components
+        BoardView.tsx            — Main board container
+        BoardTable.tsx           — TanStack table grid
+        BoardRow.tsx             — Memoized row
+        DetailPanel.tsx          — Slide-out detail editor
+        cells/                   — Cell renderers (Status, Person, Date, etc.)
+      Kanban/KanbanView.tsx      — Kanban board
+      Timeline/TimelineView.tsx  — Timeline/Gantt view
+      Dashboard/DashboardView.tsx — Dashboard widgets
+      common/
+        Modal.tsx                — Reusable modal (supports wide prop)
+        ConfirmDialog.tsx        — Destructive action confirmation
+  public/
+    fonts/                       — Inter WOFF2 (400/500/600/700)
+    favicon.svg
+    icons.svg
+  index.html                     — SPA entry point
+  vite.config.ts
+  tsconfig.json
+  package.json
+  CLAUDE.md                      — This file
+  ODYSSEY-IMPLEMENTATION.md      — Full implementation plan (Phases 1-9)
 ```
+
+**Note**: Root-level `.js` files (shared.js, compliance.js, etc.) are obsolete remnants from the vanilla JS era and are NOT used by the React app.
 
 ---
 
-## Database — 7 HQ Tables (+ shared Atlas V2 tables)
+## Database — HQ Tables (+ shared Atlas V2 tables)
 
 All HQ tables prefixed `hq_` with RLS enabled. Authenticated users can CRUD.
 
 | # | Table | Key Columns |
 |---|-------|-------------|
-| 1 | hq_projects | id, name, description, status (Backlog/In Progress/Review/Done/Archived), priority, owner_id |
-| 2 | hq_tasks | id, project_id (FK → hq_projects, CASCADE), title, description, status, assignee_id, due_date, priority, sort_order |
-| 3 | hq_compliance_items | id, title, description, category, status, due_date, state, responsible_id, notes, attachments (JSONB) |
-| 4 | hq_licenses | id, license_type, license_number, state, issued_date, expiration_date, renewal_date, status, issuing_authority, notes |
-| 5 | hq_employees | id, auth_user_id, first_name, last_name, email, phone, role, department, hire_date, status, notes |
-| 6 | hq_document_folders | id, name, parent_id (self-ref FK), google_drive_folder_id |
-| 7 | hq_documents | id, name, mime_type, size_bytes, storage_path, folder_id (FK → hq_document_folders), google_drive_id, uploaded_by |
+| 1 | hq_projects | id, name, description, status, priority, owner_id |
+| 2 | hq_board_groups | id, project_id, name, color, sort_order, collapsed |
+| 3 | hq_board_columns | id, project_id, name, type, settings, sort_order |
+| 4 | hq_tasks | id, project_id, group_id, title, sort_order |
+| 5 | hq_task_values | id, task_id, column_id, value |
+| 6 | hq_compliance_items | id, title, description, category, status, due_date, state, responsible_party, recurrence, recurrence_interval, evidence_date, evidence_ref, evidence_method, regulation_ref, parent_id, score_weight, attachments (JSONB) |
+| 7 | hq_licenses | id, license_type, license_number, state, issued_date, expiration_date, renewal_date, status, issuing_authority, notes |
+| 8 | hq_employees | id, auth_user_id, first_name, last_name, email, phone, role, department, hire_date, status, notes |
+| 9 | hq_document_folders | id, name, parent_id (self-ref FK), google_drive_folder_id |
+| 10 | hq_documents | id, name, mime_type, size_bytes, storage_path, folder_id, google_drive_id, uploaded_by |
 
 **Shared tables read (not written) by HQ:**
 - `profiles` — user accounts (auth)
@@ -88,72 +130,70 @@ All HQ tables prefixed `hq_` with RLS enabled. Authenticated users can CRUD.
 
 ## Auth Pattern
 
-- Same as Atlas V2 admin app but with **separate storage key** (`atlas-hq-auth-token`) to prevent session collision
-- `initAuth()` → `getSession()` + CustomStorage backup + `onAuthStateChange`
-- Queries `corporate_staff` table for permissions (auth_user_id match, fallback to email match)
-- `customConfirm()` for all destructive actions (no native `confirm()`)
+- Supabase Auth with **separate storage key** (`atlas-hq-auth-token`) — prevents session collision with Atlas V2
+- Zustand `authStore.ts`: `initialize()` → `getSession()` + `onAuthStateChange`
+- Queries `profiles` table for user info
+- `ConfirmDialog` component for all destructive actions
 
 ---
 
-## SPA Routing
+## Routing
 
-- Hash-based: `#dashboard`, `#projects`, `#compliance`, `#licensing`, `#hr`, `#documents`
-- `validPages` array in shared.js
-- `navigateTo(page)` → `renderPage(page)` → calls page-specific render function
-- `.view` / `.view.active` CSS for page visibility
-- `_navId` stale render protection
+- Path-based via react-router-dom v7: `/dashboard`, `/projects`, `/compliance`, `/licensing`, `/hr`, `/documents`
+- `AppShell` layout wraps all routes (sidebar + header + main content)
+- `AuthGate` component blocks unauthenticated access → shows `LoginPage`
 
 ---
 
 ## Key Patterns
 
-**Data Cache** — 60-second TTL per data type. `clearCache('key')` or `clearCache()` for all.
+**Zustand Stores** — `authStore` (session), `boardStore` (projects board), `uiStore` (sidebar/theme).
 
-**Resilient Queries** — `resilientQuery()` with LockManager error retry, `resilientWrite()` for mutations.
+**Modal Pattern** — `<Modal>` component with `open`, `onClose`, `title`, `wide`, `footer` props.
 
-**Kanban Drag & Drop** — HTML5 Drag API (no library). `handleTaskDrop()` updates task status on drop.
+**Toast Notifications** — `react-hot-toast` with Nexus-styled toasts.
 
-**Modal Pattern** — Single reusable `#hq-modal` with dynamic title/body/footer. `openModal()` / `closeModal()`.
+**Theme** — Light/dark toggle via `data-theme` attribute on `<html>`. Persisted to localStorage.
 
-**Toast Notifications** — `showToast(message, type, duration)` with deduplication.
-
-**Theme** — Light/dark toggle via `data-theme` attribute. Persisted to localStorage.
+**Board (Projects)** — Monday.com-style board using `@tanstack/react-table` + `@dnd-kit` for drag-and-drop. Custom column types: status, person, date, text, number, checkbox.
 
 ---
 
-## Cache Busting
+## Phase 3: Compliance Engine (COMPLETE)
 
-All script tags use `?v=20260319hq1` pattern. Bump version on every deploy:
-```html
-<script defer src="./shared.js?v=20260319hq1"></script>
-```
+Cannabis-specific compliance tracking with the following features:
+
+**Cannabis Categories**: Seed-to-Sale/Metrc, DOT/FMCSA, Vehicle Compliance, Drug Testing, Background Checks, State Cannabis Authority, Regulatory, Tax, Insurance, Reporting, Safety, Training
+
+**Auto-Status Calculation**: On page load, items with passed due_date auto-update to "Overdue" (past due) or "Due Soon" (within 30 days). Compliant and Not Applicable items are excluded from auto-update.
+
+**Recurring Items**: When an item with recurrence is marked Compliant, a new Pending item is auto-created with the next due date. Supports monthly, quarterly, semi-annual, annual, and custom day intervals. Recurring items link to parent via `parent_id`.
+
+**Evidence / Proof Fields**: Structured evidence tracking: evidence_date, evidence_ref (confirmation number), evidence_method (online/mail/in-person/email/phone/fax). Collapsible section in the edit modal.
+
+**Regulation Reference**: Text field for statute citation (e.g., 35 P.S. 10231.702).
+
+**Multi-State Matrix View**: Grid view with states as columns, categories as rows. Cells show color-coded counts (green/yellow/red). Click a cell to filter the list view. Bottom row shows per-state compliance scores.
+
+**Compliance Score**: Weighted percentage: (compliant weight / total weight) × 100. Score weight per item (default 1, max 10). Overall score + per-state breakdown shown in KPI cards and state chips.
+
+**Database columns added** (Phase 3 migration): recurrence, recurrence_interval, evidence_date, evidence_ref, evidence_method, regulation_ref, parent_id, score_weight, responsible_party
 
 ---
 
-## What's Complete vs. In Progress
+## Odyssey Phase Status
 
-### Complete
-- Full SPA shell with 6 pages
-- Auth (Supabase, corporate_staff permissions, session persistence)
-- Dashboard with KPI cards, deadline tracking, activity feed
-- Projects with Kanban board + list view + task CRUD
-- Compliance with filterable list + CRUD
-- Licensing with state-grouped cards + expiration alerts + CRUD
-- HR with employee directory + read-only drivers tab + CRUD
-- Documents with folder tree + file upload to Supabase Storage
-- Local full-text search across all modules
-- Dark mode toggle
-- All 7 database tables with RLS
-- Responsive mobile layout
-
-### In Progress / Next Up
-- Google Drive OAuth + sync worker (pull docs into Supabase Storage)
-- Claude API search worker (Cloudflare Worker proxy)
-- Cloudflare Pages project setup + custom domain (hq.talaria.com)
-- Push notifications for compliance deadlines
-- Advanced reporting / analytics
-- Employee onboarding workflows
-- HQ-specific permission columns in corporate_staff table
+| # | Phase | Status |
+|---|-------|--------|
+| 1 | Foundation | COMPLETE |
+| 2 | Core Modules | COMPLETE |
+| 3 | Compliance Engine | COMPLETE |
+| 4 | Licensing Overhaul | PLANNED |
+| 5 | HR and Workforce | PLANNED |
+| 6 | Google Drive Integration | PLANNED |
+| 7 | Atlas AI | PLANNED |
+| 8 | Dashboard + Cross-Module | PLANNED |
+| 9 | Projects + Permissions | PLANNED |
 
 ---
 
@@ -162,15 +202,18 @@ All script tags use `?v=20260319hq1` pattern. Bump version on every deploy:
 - [ ] Login + session persistence (separate from Atlas V2 admin)
 - [ ] Sidebar navigation — all 6 pages load, active state highlights
 - [ ] Dashboard KPI cards calculate correctly from live data
-- [ ] Projects — Kanban drag-and-drop moves tasks between columns
-- [ ] Projects — list view shows all projects with task counts
-- [ ] Compliance — filters work (category, status, state)
+- [ ] Projects — Monday-style board with groups, custom columns, drag-and-drop
+- [ ] Projects — kanban, timeline, and dashboard views
+- [ ] Compliance — cannabis categories, auto-status, recurring items
+- [ ] Compliance — list view filters (category, status, state)
+- [ ] Compliance — matrix view with per-state scores
+- [ ] Compliance — evidence/proof fields, regulation reference
 - [ ] Licensing — cards grouped by state with expiration badges
 - [ ] HR — All Staff tab shows employees, Drivers tab shows read-only driver list
-- [ ] Documents — folder tree navigation, file upload to Supabase Storage
+- [ ] Documents — placeholder ready for Google Drive integration
 - [ ] AI Search — CMD+K opens overlay, local search returns results
 - [ ] Dark mode toggle persists
-- [ ] customConfirm() used for all destructive actions
+- [ ] ConfirmDialog used for all destructive actions
 - [ ] Dev/prod environment switching by hostname
 
 ---

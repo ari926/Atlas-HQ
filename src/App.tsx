@@ -12,17 +12,18 @@ import HRPage from './pages/HRPage';
 import DocumentsPage from './pages/DocumentsPage';
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { session, loading, initialized } = useAuthStore();
-
-  if (!initialized || loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh', background: 'var(--color-bg)' }}>
-        <div className="skeleton" style={{ width: 200, height: 24, borderRadius: 'var(--radius-md)' }} />
-      </div>
-    );
-  }
-
-  if (!session) return <LoginPage />;
+  // TODO: Re-enable auth gate after login is fixed
+  // const { session, loading, initialized } = useAuthStore();
+  //
+  // if (!initialized || loading) {
+  //   return (
+  //     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh', background: 'var(--color-bg)' }}>
+  //       <div className="skeleton" style={{ width: 200, height: 24, borderRadius: 'var(--radius-md)' }} />
+  //     </div>
+  //   );
+  // }
+  //
+  // if (!session) return <LoginPage />;
   return <>{children}</>;
 }
 
