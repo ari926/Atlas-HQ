@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CreditCard, Plus } from 'lucide-react';
+import { CreditCard, Plus, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatDate, daysUntil } from '../lib/utils';
 import Modal from '../components/common/Modal';
@@ -15,9 +15,11 @@ interface License {
   expiration_date: string | null;
   renewal_date: string | null;
   issuing_authority: string | null;
+  notes: string | null;
+  document_url: string | null;
 }
 
-const STATES_MAP: Record<string, string> = { PA: 'Pennsylvania', OH: 'Ohio', MD: 'Maryland', NJ: 'New Jersey', MO: 'Missouri', WV: 'West Virginia' };
+const STATES_MAP: Record<string, string> = { PA: 'Pennsylvania', OH: 'Ohio', MD: 'Maryland', NJ: 'New Jersey', MO: 'Missouri', WV: 'West Virginia', UT: 'Utah', NV: 'Nevada', Federal: 'Federal' };
 const STATES = Object.keys(STATES_MAP);
 
 export default function LicensingPage() {
@@ -48,6 +50,8 @@ export default function LicensingPage() {
       expiration_date: fd.get('expiration_date') as string || null,
       renewal_date: fd.get('renewal_date') as string || null,
       issuing_authority: fd.get('issuing_authority') as string || null,
+      notes: fd.get('notes') as string || null,
+      document_url: fd.get('document_url') as string || null,
     };
     if (editLic) {
       await supabase.from('hq_licenses').update(payload).eq('id', editLic.id);
@@ -123,6 +127,17 @@ export default function LicensingPage() {
                       <div className="license-card-detail"><span>Expires</span><span>{formatDate(l.expiration_date)}</span></div>
                       {l.renewal_date && <div className="license-card-detail"><span>Renewal</span><span>{formatDate(l.renewal_date)}</span></div>}
                       {l.issuing_authority && <div className="license-card-detail"><span>Authority</span><span>{l.issuing_authority}</span></div>}
+                      {l.document_url && (
+                        <a
+                          href={l.document_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--color-primary)' }}
+                        >
+                          <ExternalLink size={12} /> View Document
+                        </a>
+                      )}
                     </div>
                   );
                 })}
@@ -179,6 +194,21 @@ export default function LicensingPage() {
               <label className="field-label">Issuing Authority</label>
               <input className="input-field" name="issuing_authority" defaultValue={editLic?.issuing_authority || ''} />
             </div>
+          </div>
+          <div className="form-row">
+            <label className="field-label">Document Link (Google Drive URL)</label>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input className="input-field" name="document_url" defaultValue={editLic?.document_url || ''} placeholder="https://docs.google.com/..." style={{ flex: 1 }} />
+              {editLic?.document_url && (
+                <a href={editLic.document_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" title="Open document">
+                  <ExternalLink size={14} />
+                </a>
+              )}
+            </div>
+          </div>
+          <div className="form-row">
+            <label className="field-label">Notes</label>
+            <textarea className="input-field" name="notes" rows={2} defaultValue={editLic?.notes || ''} />
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
             <button type="button" className="btn btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button>

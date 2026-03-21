@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { ShieldCheck, Plus, Grid3X3, List, Trash2, RotateCcw, FileText, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, Plus, Grid3X3, List, Trash2, RotateCcw, FileText, AlertTriangle, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatDate, daysUntil } from '../lib/utils';
 import Modal from '../components/common/Modal';
@@ -23,6 +23,7 @@ interface ComplianceItem {
   evidence_ref: string | null;
   evidence_method: string | null;
   regulation_ref: string | null;
+  document_url: string | null;
   parent_id: string | null;
   score_weight: number;
   created_at: string;
@@ -46,7 +47,7 @@ const CATEGORIES = [
 ];
 
 const STATUSES = ['Compliant', 'In Progress', 'Due Soon', 'Overdue', 'Pending', 'Not Applicable'];
-const STATES = ['PA', 'OH', 'MD', 'NJ', 'MO', 'WV'];
+const STATES = ['PA', 'OH', 'MD', 'NJ', 'MO', 'WV', 'UT', 'NV'];
 
 const RECURRENCE_OPTIONS = [
   { value: '', label: 'None (one-time)' },
@@ -235,6 +236,7 @@ export default function CompliancePage() {
       evidence_ref: fd.get('evidence_ref') as string || null,
       evidence_method: fd.get('evidence_method') as string || null,
       regulation_ref: fd.get('regulation_ref') as string || null,
+      document_url: fd.get('document_url') as string || null,
       score_weight: parseInt(fd.get('score_weight') as string) || 1,
     };
 
@@ -432,6 +434,18 @@ export default function CompliancePage() {
                             <FileText size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {item.regulation_ref}
                           </span>
                         )}
+                        {item.document_url && (
+                          <a
+                            href={item.document_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ marginRight: '0.375rem', color: 'var(--color-primary)', opacity: 0.8 }}
+                            title="View document"
+                          >
+                            <ExternalLink size={12} style={{ display: 'inline', verticalAlign: 'middle' }} />
+                          </a>
+                        )}
                         {dueText}
                       </div>
                     </div>
@@ -568,6 +582,19 @@ export default function CompliancePage() {
             <div className="form-row">
               <label className="field-label">Regulation Reference</label>
               <input className="input-field" name="regulation_ref" defaultValue={editItem?.regulation_ref || ''} placeholder="e.g., 35 P.S. 10231.702" />
+            </div>
+          </div>
+
+          {/* Document Link */}
+          <div className="form-row">
+            <label className="field-label">Document Link (Google Drive URL)</label>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input className="input-field" name="document_url" defaultValue={editItem?.document_url || ''} placeholder="https://docs.google.com/..." style={{ flex: 1 }} />
+              {editItem?.document_url && (
+                <a href={editItem.document_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" title="Open document">
+                  <ExternalLink size={14} />
+                </a>
+              )}
             </div>
           </div>
 
