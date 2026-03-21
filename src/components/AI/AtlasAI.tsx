@@ -151,7 +151,7 @@ export default function AtlasAI() {
     return () => window.removeEventListener('keydown', handler);
   }, [searchOpen, setSearchOpen]);
 
-  /* ─── Submit ─── */
+  /* ─── Submit (streaming) ─── */
   const submit = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
@@ -183,6 +183,7 @@ export default function AtlasAI() {
             question: trimmed,
             history,
             mode: mode === 'auto' ? undefined : mode,
+            stream: true,
           }),
         });
 
@@ -191,23 +192,72 @@ export default function AtlasAI() {
           throw new Error(errText || `HTTP ${res.status}`);
         }
 
-        const data = await res.json();
-        const aiMsg: ChatMessage = {
-          role: 'ai',
-          content: data.answer || 'No response received.',
-          mode: data.mode || 'general',
-          timestamp: Date.now(),
-        };
-        setMessages((prev) => [...prev, aiMsg]);
+        // Create placeholder AI message
+        const aiMsgIndex = messages.length + 1; // +1 for user msg we just added
+        let responseMode: ResponseMode = 'general';
+        let fullText = '';
+
+        // Add empty AI message that we'll update as chunks arrive
+        setMessages((prev) => [...prev, { role: 'ai', content: '', mode: 'general', timestamp: Date.now() }]);
+
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.type === 'mode') {
+                  responseMode = data.mode;
+                  setMessages((prev) => {
+                    const updated = [...prev];
+                    const last = updated[updated.length - 1];
+                    if (last?.role === 'ai') last.mode = data.mode;
+                    return updated;
+                  });
+                } else if (data.type === 'text') {
+                  fullText += data.text;
+                  const currentText = fullText; // capture for closure
+                  setMessages((prev) => {
+                    const updated = [...prev];
+                    const last = updated[updated.length - 1];
+                    if (last?.role === 'ai') last.content = currentText;
+                    return updated;
+                  });
+                } else if (data.type === 'done') {
+                  // Stream complete
+                }
+              } catch { /* skip unparseable */ }
+            }
+          }
+        }
+
+        // Ensure final state is set
+        if (!fullText) {
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.role === 'ai' && !last.content) last.content = 'No response received.';
+            return updated;
+          });
+        }
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : 'Unknown error';
-        const aiMsg: ChatMessage = {
+        setMessages((prev) => [...prev, {
           role: 'ai',
           content: `Sorry, I could not process that request. ${errMsg}`,
           mode: 'general',
           timestamp: Date.now(),
-        };
-        setMessages((prev) => [...prev, aiMsg]);
+        }]);
       } finally {
         setLoading(false);
       }
