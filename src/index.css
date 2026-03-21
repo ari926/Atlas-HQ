@@ -301,13 +301,13 @@ textarea.input-field { min-height: 80px; resize: vertical; }
 .data-table tbody tr:last-child td { border-bottom: none; }
 
 /* ─── KPI CARDS ─── */
-.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-.kpi-card { background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: var(--radius-lg); padding: 1.25rem; transition: box-shadow var(--transition-interactive); }
+.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 1.5rem; }
+.kpi-card { background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: var(--radius-lg); padding: 1rem; transition: box-shadow var(--transition-interactive); min-width: 0; }
 .kpi-card:hover { box-shadow: var(--shadow-md); }
-.kpi-label { font-size: var(--text-xs); font-weight: 500; color: var(--color-tx-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.5rem; }
-.kpi-value { font-size: var(--text-xl); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--color-tx); }
-.kpi-delta { font-size: var(--text-xs); margin-top: 0.375rem; color: var(--color-tx-muted); }
-.kpi-icon { width: 40px; height: 40px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; margin-bottom: 0.75rem; }
+.kpi-label { font-size: 0.65rem; font-weight: 500; color: var(--color-tx-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.375rem; }
+.kpi-value { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--color-tx); line-height: 1.2; }
+.kpi-delta { font-size: 0.65rem; margin-top: 0.25rem; color: var(--color-tx-muted); }
+.kpi-icon { width: 32px; height: 32px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; margin-bottom: 0.5rem; }
 .kpi-icon.teal { background: var(--color-primary-hl); color: var(--color-primary); }
 .kpi-icon.green { background: var(--color-success-hl); color: var(--color-success); }
 .kpi-icon.orange { background: var(--color-warning-hl); color: var(--color-warning); }
@@ -716,4 +716,5 @@ textarea.input-field { min-height: 80px; resize: vertical; }
   .app-shell:not(.sidebar-collapsed) .sidebar { transform: translateX(0); }
   .mobile-menu-btn { display: flex; }
   .form-grid { grid-template-columns: 1fr; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
 }

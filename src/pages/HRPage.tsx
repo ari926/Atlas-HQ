@@ -268,25 +268,25 @@ export default function HRPage() {
       {showKpis && (
       <div className="kpi-grid" style={{ marginBottom: '1rem' }}>
         <div className="kpi-card">
-          <div className="kpi-icon teal"><Users size={20} /></div>
+          <div className="kpi-icon teal"><Users size={16} /></div>
           <div className="kpi-label">Active Employees</div>
           <div className="kpi-value">{activeCount}</div>
           <div className="kpi-delta">{employees.length} total</div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-icon green"><Shield size={20} /></div>
+          <div className="kpi-icon green"><Shield size={16} /></div>
           <div className="kpi-label">BG Checks Expiring</div>
           <div className="kpi-value">{bgExpiring}</div>
           <div className="kpi-delta">within 30 days</div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-icon orange"><FlaskConical size={20} /></div>
+          <div className="kpi-icon orange"><FlaskConical size={16} /></div>
           <div className="kpi-label">Drug Tests Pending</div>
           <div className="kpi-value">{drugPending}</div>
           <div className="kpi-delta">awaiting results</div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-icon blue"><Users size={20} /></div>
+          <div className="kpi-icon blue"><Users size={16} /></div>
           <div className="kpi-label">Active Drivers</div>
           <div className="kpi-value">{activeDrivers.length}</div>
           <div className="kpi-delta">{inactiveDrivers.length} inactive</div>
