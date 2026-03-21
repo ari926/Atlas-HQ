@@ -32,13 +32,10 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   initialize: async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const profile = await fetchProfile(session.user.id);
-        set({ session, user: session.user, profile, loading: false, initialized: true });
-      } else {
-        set({ session: null, user: null, profile: null, loading: false, initialized: true });
-      }
+      // TODO: Re-enable session check when auth is restored
+      // For now, clear any stale sessions so anon key works with RLS
+      await supabase.auth.signOut();
+      set({ session: null, user: null, profile: null, loading: false, initialized: true });
 
       // Listen for auth changes
       supabase.auth.onAuthStateChange(async (_event, session) => {
