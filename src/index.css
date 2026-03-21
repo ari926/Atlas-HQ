@@ -137,8 +137,18 @@ input, select, textarea { font-family: inherit; }
   grid-template-areas: "sidebar header" "sidebar main";
   overflow: hidden;
 }
-.app-shell.sidebar-collapsed { grid-template-columns: 0 1fr; }
-.app-shell.sidebar-collapsed .sidebar { display: none; }
+.app-shell.sidebar-collapsed { grid-template-columns: 60px 1fr; }
+.app-shell.sidebar-collapsed .sidebar { overflow: visible; }
+.app-shell.sidebar-collapsed .sidebar-brand-text { display: none; }
+.app-shell.sidebar-collapsed .sidebar-brand { justify-content: center; padding: 0; }
+.app-shell.sidebar-collapsed .sidebar-nav-item span { display: none; }
+.app-shell.sidebar-collapsed .sidebar-nav-item { justify-content: center; padding: 0.5rem; }
+.app-shell.sidebar-collapsed .sidebar-nav-item.active { box-shadow: inset 3px 0 0 var(--color-primary); }
+.app-shell.sidebar-collapsed .sidebar-user-info { display: none; }
+.app-shell.sidebar-collapsed .sidebar-user { justify-content: center; padding: 0.25rem; }
+.app-shell.sidebar-collapsed .sidebar-logout { display: none; }
+.app-shell.sidebar-collapsed .sidebar-collapse-btn span { display: none; }
+.app-shell.sidebar-collapsed .sidebar-footer { padding: 0.5rem; }
 
 /* ─── SIDEBAR ─── */
 .sidebar {

@@ -7,8 +7,11 @@ import {
   Users,
   FolderOpen,
   LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
+import { useUIStore } from '../../stores/uiStore';
 import { getInitials } from '../../lib/utils';
 
 const navItems = [
@@ -22,6 +25,7 @@ const navItems = [
 
 export default function Sidebar() {
   const { profile, user, signOut } = useAuthStore();
+  const { sidebarOpen, toggleSidebar } = useUIStore();
   const displayName = profile?.full_name || user?.email || 'User';
 
   return (
@@ -48,6 +52,24 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
+
+      <button
+        className="sidebar-collapse-btn"
+        onClick={toggleSidebar}
+        title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '0.5rem',
+          width: '100%', padding: '0.5rem 1rem', margin: '0 0.5rem 0.25rem',
+          background: 'none', border: 'none', borderRadius: 'var(--radius-md)',
+          color: 'var(--color-tx-faint)', cursor: 'pointer', fontSize: '0.75rem',
+          transition: 'all 0.15s ease', maxWidth: 'calc(100% - 1rem)',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-surface-offset)'; e.currentTarget.style.color = 'var(--color-tx-muted)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--color-tx-faint)'; }}
+      >
+        {sidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+        <span>Collapse</span>
+      </button>
 
       <div className="sidebar-footer">
         <div className="sidebar-user">
