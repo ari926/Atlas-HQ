@@ -7,7 +7,12 @@
 **Supabase Project ID**: `buqopylxhqdiikzqctkb` (shared with Atlas V2)
 **Dev Supabase ID**: `dutvbquoyjtoctjstbmv`
 **Related Project**: Atlas V2 (delivery management) — github.com/ari926/atlas-v2
-**Last Updated**: March 21, 2026 | Phase 7 (Atlas AI frontend) complete
+**Last Updated**: March 21, 2026 | Phases 3-5, 7 complete. Phase 6 OAuth ready.
+**Google Cloud Project**: Talaria Atlas (talaria-atlas) — Drive API enabled, OAuth Internal
+**Claude API**: Anthropic account created, key stored as `CLAUDE_API_KEY` in Supabase Edge Function secrets
+**Edge Functions**: `atlas-ai` (streaming Claude proxy) deployed on prod Supabase
+**Auth Status**: TEMPORARILY DISABLED — AuthGate commented out, RLS disabled on all HQ tables. Re-enable when Supabase auth is fixed.
+**Anon Key**: Was regenerated — current key is in `src/lib/supabase.ts`
 
 ---
 
@@ -192,7 +197,7 @@ Cannabis-specific compliance tracking with the following features:
 | 3 | Compliance Engine | COMPLETE |
 | 4 | Licensing Overhaul | PLANNED |
 | 5 | HR and Workforce | PLANNED |
-| 6 | Google Drive Integration | PLANNED |
+| 6 | Google Drive Integration | IN PROGRESS — OAuth credentials created, secrets stored, need Edge Functions + frontend |
 | 7 | Atlas AI | COMPLETE (frontend) |
 | 8 | Dashboard + Cross-Module | PLANNED |
 | 9 | Projects + Permissions | PLANNED |
@@ -223,3 +228,33 @@ Cannabis-specific compliance tracking with the following features:
 ## Session Close Protocol
 
 Same as Atlas V2 — update this CLAUDE.md at the end of every session where changes are made.
+
+---
+
+## Next Session — Pick Up Here
+
+### Phase 6: Google Drive Integration (IN PROGRESS)
+**OAuth is set up. Build the integration.**
+
+Google Cloud credentials (stored as Supabase Edge Function secrets):
+- `GOOGLE_CLIENT_ID`: `164128185859-bqosgovmt2ch9aqptb3hte5d5hl8nrna.apps.googleusercontent.com`
+- `GOOGLE_CLIENT_SECRET`: stored in Supabase secrets
+- Redirect URI: `https://buqopylxhqdiikzqctkb.supabase.co/functions/v1/drive-callback`
+- Consent screen: Internal (talaria.com org only)
+
+**What needs building:**
+1. `drive-callback` Edge Function — OAuth token exchange (Google redirects here after consent)
+2. `drive-proxy` Edge Function — list files, search, get metadata from Drive API
+3. DB table `hq_drive_config` — store encrypted access/refresh tokens
+4. `DocumentsPage.tsx` overhaul — folder tree, file browser, search, breadcrumbs
+5. Cross-module linking — attach Drive files to compliance items, licenses, employee records
+6. Pre-built folder hierarchy auto-creation on first connect
+
+### Phase 8: Dashboard (READY)
+Pure frontend — cross-module KPI dashboard pulling from compliance, licensing, HR, drivers.
+
+### Also Pending
+- Verify Atlas AI streaming works (CLAUDE_API_KEY secret may need re-saving)
+- Re-enable auth + RLS when Supabase login is fixed
+- Populate real expiration dates on licenses (currently seeded without dates)
+- `document_url` field added to compliance/licenses/employees but not yet shown in UI
