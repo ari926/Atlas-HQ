@@ -27,10 +27,9 @@ const DEFAULT_TASKS = [
 
 interface Props {
   employeeId: string;
-  isNew?: boolean;
 }
 
-export default function OnboardingChecklist({ employeeId, isNew }: Props) {
+export default function OnboardingChecklist({ employeeId }: Props) {
   const [tasks, setTasks] = useState<OnboardingTask[]>([]);
   const [showAdd, setShowAdd] = useState(false);
 

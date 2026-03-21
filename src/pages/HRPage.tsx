@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Users, Plus, Trash2, Shield, FlaskConical, AlertTriangle, ExternalLink, Phone, User } from 'lucide-react';
+import { Users, Plus, Trash2, Shield, FlaskConical, AlertTriangle, ExternalLink, Phone, User, Truck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatDate, daysUntil } from '../lib/utils';
 import Modal from '../components/common/Modal';
@@ -48,8 +48,21 @@ interface Driver {
   last_name: string;
   email: string | null;
   phone: string | null;
-  role: string | null;
+  role_type: string | null;
   is_active: boolean;
+  status: string;
+  license_number: string | null;
+  oln_state: string | null;
+  oln_expiration: string | null;
+  vehicle_type: string | null;
+  vehicle_plate: string | null;
+  date_hired: string | null;
+  date_terminated: string | null;
+  pay_rate: number | null;
+  prior_background: string | null;
+  dob: string | null;
+  notes: string | null;
+  inactive_reason: string | null;
 }
 
 /* ─── Constants ─── */
@@ -84,6 +97,8 @@ export default function HRPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editEmp, setEditEmp] = useState<Employee | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Employee | null>(null);
+  const [driverModal, setDriverModal] = useState(false);
+  const [editDriver, setEditDriver] = useState<Driver | null>(null);
   const [deptFilter, setDeptFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showCredentials, setShowCredentials] = useState(false);
@@ -98,9 +113,46 @@ export default function HRPage() {
 
   const loadDrivers = async () => {
     const { data } = await supabase.from('drivers')
-      .select('id, display_id, first_name, last_name, email, phone, role, is_active')
+      .select('*')
       .order('last_name');
     setDrivers(data || []);
+  };
+
+  const openDriverModal = (d?: Driver) => { setEditDriver(d || null); setDriverModal(true); };
+
+  const handleDriverSave = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const payload: Record<string, unknown> = {
+      first_name: fd.get('first_name') as string,
+      last_name: fd.get('last_name') as string,
+      email: fd.get('email') as string || null,
+      phone: fd.get('phone') as string || null,
+      role_type: fd.get('role_type') as string || null,
+      status: fd.get('status') as string || 'active',
+      is_active: (fd.get('status') as string) !== 'terminated',
+      license_number: fd.get('license_number') as string || null,
+      oln_state: fd.get('oln_state') as string || null,
+      oln_expiration: fd.get('oln_expiration') as string || null,
+      vehicle_type: fd.get('vehicle_type') as string || null,
+      vehicle_plate: fd.get('vehicle_plate') as string || null,
+      date_hired: fd.get('date_hired') as string || null,
+      pay_rate: parseFloat(fd.get('pay_rate') as string) || null,
+      prior_background: fd.get('prior_background') as string || null,
+      notes: fd.get('notes') as string || null,
+      display_id: fd.get('display_id') as string || null,
+    };
+    if (editDriver) {
+      const { error } = await supabase.from('drivers').update(payload).eq('id', editDriver.id);
+      if (error) { toast.error('Failed to update driver'); return; }
+      toast.success('Driver updated');
+    } else {
+      const { error } = await supabase.from('drivers').insert(payload);
+      if (error) { toast.error('Failed to create driver'); return; }
+      toast.success('Driver created');
+    }
+    setDriverModal(false);
+    loadDrivers();
   };
 
   useEffect(() => {
@@ -305,23 +357,42 @@ export default function HRPage() {
       {/* Drivers Tab */}
       {tab === 'drivers' && (
         <>
-          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-tx-muted)', marginBottom: '1rem' }}>
-            Drivers are managed in Atlas V2. This is a read-only view. {activeDrivers.length} active, {inactiveDrivers.length} inactive.
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-tx-muted)', margin: 0 }}>
+              Synced with Atlas V2 — changes here reflect in both apps. {activeDrivers.length} active, {inactiveDrivers.length} inactive.
+            </p>
+            <button className="btn btn-primary btn-sm" onClick={() => openDriverModal()}>
+              <Plus size={14} /> Add Driver
+            </button>
+          </div>
           <div className="table-wrap">
             <table className="data-table">
-              <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Status</th></tr></thead>
+              <thead><tr>
+                <th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Role</th>
+                <th>License</th><th>Vehicle</th><th>Hired</th><th>Status</th><th></th>
+              </tr></thead>
               <tbody>
-                {activeDrivers.map(d => (
-                  <tr key={d.id}>
-                    <td>{d.display_id || '—'}</td>
-                    <td>{d.first_name} {d.last_name}</td>
-                    <td>{d.email || '—'}</td>
-                    <td>{d.phone || '—'}</td>
-                    <td>{d.role || '—'}</td>
-                    <td><span className="badge badge-active">Active</span></td>
-                  </tr>
-                ))}
+                {[...activeDrivers, ...inactiveDrivers].map(d => {
+                  const olnDays = daysUntil(d.oln_expiration);
+                  const olnBadge = olnDays === null ? null : olnDays < 0 ? 'badge-expired' : olnDays <= 30 ? 'badge-due-soon' : null;
+                  return (
+                    <tr key={d.id} style={!d.is_active ? { opacity: 0.5 } : undefined}>
+                      <td style={{ fontSize: '0.7rem', color: 'var(--color-tx-muted)' }}>{d.display_id || '—'}</td>
+                      <td><strong>{d.first_name} {d.last_name}</strong></td>
+                      <td style={{ fontSize: '0.75rem' }}>{d.email || '—'}</td>
+                      <td style={{ fontSize: '0.75rem' }}>{d.phone || '—'}</td>
+                      <td style={{ fontSize: '0.75rem' }}>{d.role_type || '—'}</td>
+                      <td style={{ fontSize: '0.75rem' }}>
+                        {d.license_number || '—'}
+                        {olnBadge && <span className={`badge ${olnBadge}`} style={{ fontSize: '0.6rem', marginLeft: 4 }}>{olnDays! < 0 ? 'Exp' : `${olnDays}d`}</span>}
+                      </td>
+                      <td style={{ fontSize: '0.75rem' }}>{d.vehicle_type ? `${d.vehicle_type}${d.vehicle_plate ? ` (${d.vehicle_plate})` : ''}` : '—'}</td>
+                      <td style={{ fontSize: '0.75rem' }}>{formatDate(d.date_hired)}</td>
+                      <td><span className={`badge ${d.is_active ? 'badge-active' : 'badge-error'}`}>{d.is_active ? 'Active' : 'Inactive'}</span></td>
+                      <td><button className="btn btn-sm btn-ghost" onClick={() => openDriverModal(d)}>Edit</button></td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -525,6 +596,104 @@ export default function HRPage() {
             )}
             <button type="button" className="btn btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button>
             <button type="submit" className="btn btn-primary">{editEmp ? 'Save' : 'Create'}</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ─── Driver Modal ─── */}
+      <Modal open={driverModal} onClose={() => setDriverModal(false)} title={editDriver ? `${editDriver.first_name} ${editDriver.last_name}` : 'New Driver'} wide>
+        <form onSubmit={handleDriverSave}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', fontSize: '0.7rem', color: 'var(--color-tx-muted)' }}>
+            <Truck size={14} /> Changes sync to Atlas V2 in real-time
+          </div>
+          <div className="form-grid">
+            <div className="form-row">
+              <label className="field-label">First Name</label>
+              <input className="input-field" name="first_name" required defaultValue={editDriver?.first_name || ''} />
+            </div>
+            <div className="form-row">
+              <label className="field-label">Last Name</label>
+              <input className="input-field" name="last_name" required defaultValue={editDriver?.last_name || ''} />
+            </div>
+          </div>
+          <div className="form-grid">
+            <div className="form-row">
+              <label className="field-label">Email</label>
+              <input className="input-field" type="email" name="email" defaultValue={editDriver?.email || ''} />
+            </div>
+            <div className="form-row">
+              <label className="field-label">Phone</label>
+              <input className="input-field" name="phone" defaultValue={editDriver?.phone || ''} />
+            </div>
+          </div>
+          <div className="form-grid">
+            <div className="form-row">
+              <label className="field-label">Display ID</label>
+              <input className="input-field" name="display_id" defaultValue={editDriver?.display_id || ''} placeholder="e.g., DRV-001" />
+            </div>
+            <div className="form-row">
+              <label className="field-label">Role Type</label>
+              <input className="input-field" name="role_type" defaultValue={editDriver?.role_type || ''} placeholder="e.g., Driver, Lead Driver" />
+            </div>
+          </div>
+          <div className="form-grid">
+            <div className="form-row">
+              <label className="field-label">Driver License #</label>
+              <input className="input-field" name="license_number" defaultValue={editDriver?.license_number || ''} />
+            </div>
+            <div className="form-row">
+              <label className="field-label">OLN State</label>
+              <select className="select-field" name="oln_state" defaultValue={editDriver?.oln_state || ''}>
+                <option value="">—</option>
+                {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="form-grid">
+            <div className="form-row">
+              <label className="field-label">OLN Expiration</label>
+              <input className="input-field" type="date" name="oln_expiration" defaultValue={editDriver?.oln_expiration || ''} />
+            </div>
+            <div className="form-row">
+              <label className="field-label">Date Hired</label>
+              <input className="input-field" type="date" name="date_hired" defaultValue={editDriver?.date_hired || ''} />
+            </div>
+          </div>
+          <div className="form-grid">
+            <div className="form-row">
+              <label className="field-label">Vehicle Type</label>
+              <input className="input-field" name="vehicle_type" defaultValue={editDriver?.vehicle_type || ''} placeholder="e.g., 2023 Ford Transit" />
+            </div>
+            <div className="form-row">
+              <label className="field-label">Vehicle Plate</label>
+              <input className="input-field" name="vehicle_plate" defaultValue={editDriver?.vehicle_plate || ''} />
+            </div>
+          </div>
+          <div className="form-grid">
+            <div className="form-row">
+              <label className="field-label">Pay Rate</label>
+              <input className="input-field" type="number" step="0.01" name="pay_rate" defaultValue={editDriver?.pay_rate || ''} />
+            </div>
+            <div className="form-row">
+              <label className="field-label">Status</label>
+              <select className="select-field" name="status" defaultValue={editDriver?.status || 'active'}>
+                <option value="active">Active</option>
+                <option value="on_leave">On Leave</option>
+                <option value="terminated">Terminated</option>
+              </select>
+            </div>
+          </div>
+          <div className="form-row">
+            <label className="field-label">Prior Background</label>
+            <input className="input-field" name="prior_background" defaultValue={editDriver?.prior_background || ''} placeholder="Previous employer / experience" />
+          </div>
+          <div className="form-row">
+            <label className="field-label">Notes</label>
+            <textarea className="input-field" name="notes" rows={2} defaultValue={editDriver?.notes || ''} />
+          </div>
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setDriverModal(false)}>Cancel</button>
+            <button type="submit" className="btn btn-primary">{editDriver ? 'Save' : 'Create'}</button>
           </div>
         </form>
       </Modal>

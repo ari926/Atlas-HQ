@@ -7,11 +7,21 @@ interface License {
   id: string;
   license_type: string;
   license_number: string | null;
+  license_category: string | null;
   state: string;
   status: string;
+  issued_date: string | null;
   expiration_date: string | null;
   renewal_date: string | null;
-  license_category: string | null;
+  issuing_authority: string | null;
+  notes: string | null;
+  document_url: string | null;
+  application_fee: number | null;
+  annual_fee: number | null;
+  renewal_fee: number | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
 }
 
 interface Props {
