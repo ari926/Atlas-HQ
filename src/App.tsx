@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from './stores/authStore';
 import AppShell from './components/Layout/AppShell';
-import LoginPage from './components/Auth/LoginPage';
+// import LoginPage from './components/Auth/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import ProjectsPage from './pages/ProjectsPage';
 import CompliancePage from './pages/CompliancePage';
