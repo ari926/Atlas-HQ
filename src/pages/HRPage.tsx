@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react';
-import { Users, Plus } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { Users, Plus, Trash2, Shield, FlaskConical, AlertTriangle, ExternalLink, Phone, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { formatDate } from '../lib/utils';
+import { formatDate, daysUntil } from '../lib/utils';
 import Modal from '../components/common/Modal';
+import ConfirmDialog from '../components/common/ConfirmDialog';
+import TrainingRecords from '../components/HR/TrainingRecords';
+import OnboardingChecklist from '../components/HR/OnboardingChecklist';
 import toast from 'react-hot-toast';
 
+/* ─── Types ─── */
 interface Employee {
   id: string;
   first_name: string;
@@ -15,6 +19,26 @@ interface Employee {
   role: string | null;
   status: string;
   hire_date: string | null;
+  notes: string | null;
+  document_url: string | null;
+  // Cannabis credentials
+  bg_check_status: string | null;
+  bg_check_expiry: string | null;
+  cannabis_permit_number: string | null;
+  cannabis_permit_state: string | null;
+  drug_test_status: string | null;
+  drug_test_last: string | null;
+  drug_test_next: string | null;
+  medical_card_expiry: string | null;
+  // Emergency contact
+  emergency_name: string | null;
+  emergency_phone: string | null;
+  emergency_relation: string | null;
+  // Compensation
+  pay_rate: number | null;
+  pay_type: string | null;
+  // Vehicle
+  assigned_vehicle: string | null;
 }
 
 interface Driver {
@@ -28,6 +52,30 @@ interface Driver {
   is_active: boolean;
 }
 
+/* ─── Constants ─── */
+const DEPARTMENTS = [
+  'Operations / Dispatch', 'Drivers', 'Compliance / Legal',
+  'Finance / Admin', 'Warehouse / Logistics', 'Management',
+  'Operations', 'Compliance', 'Executive', 'Other',
+];
+
+const BG_STATUSES = ['passed', 'pending', 'expired', 'not_started'];
+const DRUG_STATUSES = ['passed', 'pending', 'failed', 'not_scheduled'];
+const PAY_TYPES = ['hourly', 'salary', 'contract'];
+const STATES = ['PA', 'OH', 'MD', 'NJ', 'MO', 'WV', 'UT', 'NV'];
+
+/* ─── Helpers ─── */
+function credBadge(status: string | null): { cls: string; text: string } {
+  if (!status) return { cls: 'badge-pending', text: 'N/A' };
+  if (status === 'passed') return { cls: 'badge-active', text: 'Passed' };
+  if (status === 'pending') return { cls: 'badge-due-soon', text: 'Pending' };
+  if (status === 'expired' || status === 'failed') return { cls: 'badge-expired', text: status.charAt(0).toUpperCase() + status.slice(1) };
+  return { cls: 'badge-pending', text: status };
+}
+
+/* ═══════════════════════════════════════════
+   HR PAGE COMPONENT
+   ═══════════════════════════════════════════ */
 export default function HRPage() {
   const [tab, setTab] = useState<'staff' | 'drivers'>('staff');
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -35,9 +83,16 @@ export default function HRPage() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editEmp, setEditEmp] = useState<Employee | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<Employee | null>(null);
+  const [deptFilter, setDeptFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [showCredentials, setShowCredentials] = useState(false);
+  const [showEmergency, setShowEmergency] = useState(false);
+  const [showComp, setShowComp] = useState(false);
 
   const loadEmployees = async () => {
-    const { data } = await supabase.from('hq_employees').select('*').order('last_name');
+    const { data, error } = await supabase.from('hq_employees').select('*').order('last_name');
+    if (error) toast.error('Failed to load employees');
     setEmployees(data || []);
   };
 
@@ -52,12 +107,26 @@ export default function HRPage() {
     Promise.all([loadEmployees(), loadDrivers()]).then(() => setLoading(false));
   }, []);
 
-  const openModal = (emp?: Employee) => { setEditEmp(emp || null); setModalOpen(true); };
+  const filtered = useMemo(() => {
+    return employees.filter(e => {
+      if (deptFilter && e.department !== deptFilter) return false;
+      if (statusFilter && e.status !== statusFilter) return false;
+      return true;
+    });
+  }, [employees, deptFilter, statusFilter]);
+
+  const openModal = (emp?: Employee) => {
+    setEditEmp(emp || null);
+    setShowCredentials(!!(emp?.bg_check_status || emp?.drug_test_status || emp?.cannabis_permit_number));
+    setShowEmergency(!!(emp?.emergency_name));
+    setShowComp(!!(emp?.pay_rate));
+    setModalOpen(true);
+  };
 
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    const payload = {
+    const payload: Record<string, unknown> = {
       first_name: fd.get('first_name') as string,
       last_name: fd.get('last_name') as string,
       email: fd.get('email') as string || null,
@@ -66,14 +135,48 @@ export default function HRPage() {
       role: fd.get('role') as string || null,
       status: fd.get('status') as string,
       hire_date: fd.get('hire_date') as string || null,
+      notes: fd.get('notes') as string || null,
+      document_url: fd.get('document_url') as string || null,
+      assigned_vehicle: fd.get('assigned_vehicle') as string || null,
+      // Credentials
+      bg_check_status: fd.get('bg_check_status') as string || null,
+      bg_check_expiry: fd.get('bg_check_expiry') as string || null,
+      cannabis_permit_number: fd.get('cannabis_permit_number') as string || null,
+      cannabis_permit_state: fd.get('cannabis_permit_state') as string || null,
+      drug_test_status: fd.get('drug_test_status') as string || null,
+      drug_test_last: fd.get('drug_test_last') as string || null,
+      drug_test_next: fd.get('drug_test_next') as string || null,
+      medical_card_expiry: fd.get('medical_card_expiry') as string || null,
+      // Emergency
+      emergency_name: fd.get('emergency_name') as string || null,
+      emergency_phone: fd.get('emergency_phone') as string || null,
+      emergency_relation: fd.get('emergency_relation') as string || null,
+      // Compensation
+      pay_rate: parseFloat(fd.get('pay_rate') as string) || null,
+      pay_type: fd.get('pay_type') as string || null,
     };
+
     if (editEmp) {
-      await supabase.from('hq_employees').update(payload).eq('id', editEmp.id);
+      const { error } = await supabase.from('hq_employees').update(payload).eq('id', editEmp.id);
+      if (error) { toast.error('Failed to update'); return; }
+      toast.success('Updated');
     } else {
-      await supabase.from('hq_employees').insert(payload);
+      const { error } = await supabase.from('hq_employees').insert(payload);
+      if (error) { toast.error('Failed to create'); return; }
+      toast.success('Created');
     }
-    toast.success(editEmp ? 'Updated' : 'Created');
     setModalOpen(false);
+    loadEmployees();
+  };
+
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    const { error } = await supabase.from('hq_employees').delete().eq('id', deleteConfirm.id);
+    if (error) { toast.error('Failed to delete'); return; }
+    toast.success('Deleted');
+    setDeleteConfirm(null);
+    setModalOpen(false);
+    setEditEmp(null);
     loadEmployees();
   };
 
@@ -82,12 +185,17 @@ export default function HRPage() {
   const activeDrivers = drivers.filter(d => d.is_active !== false);
   const inactiveDrivers = drivers.filter(d => d.is_active === false);
 
+  // KPI stats
+  const activeCount = employees.filter(e => e.status === 'Active').length;
+  const bgExpiring = employees.filter(e => { const d = daysUntil(e.bg_check_expiry); return d !== null && d >= 0 && d <= 30; }).length;
+  const drugPending = employees.filter(e => e.drug_test_status === 'pending').length;
+
   return (
     <div>
       <div className="view-header">
         <div>
           <h1 className="view-title">Human Resources</h1>
-          <p className="view-subtitle">Employee directory and driver reference</p>
+          <p className="view-subtitle">Cannabis workforce management — {employees.length} employees, {drivers.length} drivers</p>
         </div>
         {tab === 'staff' && (
           <button className="btn btn-primary btn-sm" onClick={() => openModal()}>
@@ -96,6 +204,35 @@ export default function HRPage() {
         )}
       </div>
 
+      {/* KPI Cards */}
+      <div className="kpi-grid" style={{ marginBottom: '1rem' }}>
+        <div className="kpi-card">
+          <div className="kpi-icon teal"><Users size={20} /></div>
+          <div className="kpi-label">Active Employees</div>
+          <div className="kpi-value">{activeCount}</div>
+          <div className="kpi-delta">{employees.length} total</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-icon green"><Shield size={20} /></div>
+          <div className="kpi-label">BG Checks Expiring</div>
+          <div className="kpi-value">{bgExpiring}</div>
+          <div className="kpi-delta">within 30 days</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-icon orange"><FlaskConical size={20} /></div>
+          <div className="kpi-label">Drug Tests Pending</div>
+          <div className="kpi-value">{drugPending}</div>
+          <div className="kpi-delta">awaiting results</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-icon blue"><Users size={20} /></div>
+          <div className="kpi-label">Active Drivers</div>
+          <div className="kpi-value">{activeDrivers.length}</div>
+          <div className="kpi-delta">{inactiveDrivers.length} inactive</div>
+        </div>
+      </div>
+
+      {/* Tabs */}
       <div className="tab-list">
         <button className={`tab-btn${tab === 'staff' ? ' active' : ''}`} onClick={() => setTab('staff')}>
           All Staff ({employees.length})
@@ -105,41 +242,67 @@ export default function HRPage() {
         </button>
       </div>
 
+      {/* Staff Tab */}
       {tab === 'staff' && (
-        employees.length === 0 ? (
-          <div className="empty-state">
-            <Users size={48} strokeWidth={1} />
-            <div className="empty-state-title">No employees</div>
-            <div className="empty-state-text">Add your first employee to start building the directory.</div>
+        <>
+          {/* Filters */}
+          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            <select className="select-field" value={deptFilter} onChange={e => setDeptFilter(e.target.value)} style={{ minWidth: 160 }}>
+              <option value="">All Departments</option>
+              {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+            <select className="select-field" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ minWidth: 130 }}>
+              <option value="">All Statuses</option>
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+              <option value="On Leave">On Leave</option>
+              <option value="Terminated">Terminated</option>
+            </select>
+            {(deptFilter || statusFilter) && (
+              <button className="btn btn-ghost btn-sm" onClick={() => { setDeptFilter(''); setStatusFilter(''); }}>Clear</button>
+            )}
           </div>
-        ) : (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead><tr>
-                <th>Name</th><th>Email</th><th>Phone</th><th>Department</th><th>Role</th><th>Status</th><th>Hire Date</th><th>Actions</th>
-              </tr></thead>
-              <tbody>
-                {employees.map(e => {
-                  const cls = e.status === 'Active' ? 'badge-active' : e.status === 'On Leave' ? 'badge-due-soon' : 'badge-error';
-                  return (
-                    <tr key={e.id}>
-                      <td><strong>{e.first_name} {e.last_name}</strong></td>
-                      <td>{e.email || '—'}</td>
-                      <td>{e.phone || '—'}</td>
-                      <td>{e.department || '—'}</td>
-                      <td>{e.role || '—'}</td>
-                      <td><span className={`badge ${cls}`}>{e.status}</span></td>
-                      <td>{formatDate(e.hire_date)}</td>
-                      <td><button className="btn btn-sm btn-ghost" onClick={() => openModal(e)}>Edit</button></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )
+
+          {filtered.length === 0 ? (
+            <div className="empty-state">
+              <Users size={48} strokeWidth={1} />
+              <div className="empty-state-title">No employees</div>
+              <div className="empty-state-text">Add your first employee to start building the directory.</div>
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead><tr>
+                  <th>Name</th><th>Email</th><th>Department</th><th>Role</th><th>Status</th>
+                  <th>BG Check</th><th>Drug Test</th><th>Hire Date</th><th></th>
+                </tr></thead>
+                <tbody>
+                  {filtered.map(e => {
+                    const statusCls = e.status === 'Active' ? 'badge-active' : e.status === 'On Leave' ? 'badge-due-soon' : 'badge-error';
+                    const bg = credBadge(e.bg_check_status);
+                    const dt = credBadge(e.drug_test_status);
+                    return (
+                      <tr key={e.id}>
+                        <td><strong>{e.first_name} {e.last_name}</strong></td>
+                        <td style={{ fontSize: '0.75rem' }}>{e.email || '—'}</td>
+                        <td style={{ fontSize: '0.75rem' }}>{e.department || '—'}</td>
+                        <td style={{ fontSize: '0.75rem' }}>{e.role || '—'}</td>
+                        <td><span className={`badge ${statusCls}`}>{e.status}</span></td>
+                        <td><span className={`badge ${bg.cls}`} style={{ fontSize: '0.65rem' }}>{bg.text}</span></td>
+                        <td><span className={`badge ${dt.cls}`} style={{ fontSize: '0.65rem' }}>{dt.text}</span></td>
+                        <td style={{ fontSize: '0.75rem' }}>{formatDate(e.hire_date)}</td>
+                        <td><button className="btn btn-sm btn-ghost" onClick={() => openModal(e)}>Edit</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
 
+      {/* Drivers Tab */}
       {tab === 'drivers' && (
         <>
           <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-tx-muted)', marginBottom: '1rem' }}>
@@ -165,8 +328,10 @@ export default function HRPage() {
         </>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editEmp ? 'Edit Employee' : 'New Employee'}>
+      {/* ─── Employee Modal ─── */}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editEmp ? `${editEmp.first_name} ${editEmp.last_name}` : 'New Employee'} wide>
         <form onSubmit={handleSave}>
+          {/* Basic Info */}
           <div className="form-grid">
             <div className="form-row">
               <label className="field-label">First Name</label>
@@ -190,7 +355,10 @@ export default function HRPage() {
           <div className="form-grid">
             <div className="form-row">
               <label className="field-label">Department</label>
-              <input className="input-field" name="department" defaultValue={editEmp?.department || ''} />
+              <select className="select-field" name="department" defaultValue={editEmp?.department || ''}>
+                <option value="">—</option>
+                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
             </div>
             <div className="form-row">
               <label className="field-label">Role</label>
@@ -202,6 +370,7 @@ export default function HRPage() {
               <label className="field-label">Status</label>
               <select className="select-field" name="status" defaultValue={editEmp?.status || 'Active'}>
                 <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
                 <option value="On Leave">On Leave</option>
                 <option value="Terminated">Terminated</option>
               </select>
@@ -211,12 +380,165 @@ export default function HRPage() {
               <input className="input-field" type="date" name="hire_date" defaultValue={editEmp?.hire_date || ''} />
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+          <div className="form-grid">
+            <div className="form-row">
+              <label className="field-label">Assigned Vehicle</label>
+              <input className="input-field" name="assigned_vehicle" defaultValue={editEmp?.assigned_vehicle || ''} placeholder="e.g., Van #3 — 2023 Transit" />
+            </div>
+            <div className="form-row">
+              <label className="field-label">Document Link</label>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <input className="input-field" name="document_url" defaultValue={editEmp?.document_url || ''} placeholder="Google Drive URL" style={{ flex: 1 }} />
+                {editEmp?.document_url && (
+                  <a href={editEmp.document_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm"><ExternalLink size={14} /></a>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ─── Cannabis Credentials (collapsible) ─── */}
+          <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowCredentials(!showCredentials)}
+              style={{ color: 'var(--color-tx-muted)', marginBottom: showCredentials ? '0.5rem' : 0 }}>
+              <Shield size={14} /> {showCredentials ? 'Hide' : 'Show'} Cannabis Credentials
+            </button>
+            {showCredentials && (
+              <>
+                <div className="form-grid">
+                  <div className="form-row">
+                    <label className="field-label">Background Check Status</label>
+                    <select className="select-field" name="bg_check_status" defaultValue={editEmp?.bg_check_status || ''}>
+                      <option value="">—</option>
+                      {BG_STATUSES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-row">
+                    <label className="field-label">BG Check Expiry</label>
+                    <input className="input-field" type="date" name="bg_check_expiry" defaultValue={editEmp?.bg_check_expiry || ''} />
+                  </div>
+                </div>
+                <div className="form-grid">
+                  <div className="form-row">
+                    <label className="field-label">Cannabis Permit #</label>
+                    <input className="input-field" name="cannabis_permit_number" defaultValue={editEmp?.cannabis_permit_number || ''} />
+                  </div>
+                  <div className="form-row">
+                    <label className="field-label">Permit State</label>
+                    <select className="select-field" name="cannabis_permit_state" defaultValue={editEmp?.cannabis_permit_state || ''}>
+                      <option value="">—</option>
+                      {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="form-grid">
+                  <div className="form-row">
+                    <label className="field-label">Drug Test Status</label>
+                    <select className="select-field" name="drug_test_status" defaultValue={editEmp?.drug_test_status || ''}>
+                      <option value="">—</option>
+                      {DRUG_STATUSES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-row">
+                    <label className="field-label">Last Drug Test</label>
+                    <input className="input-field" type="date" name="drug_test_last" defaultValue={editEmp?.drug_test_last || ''} />
+                  </div>
+                </div>
+                <div className="form-grid">
+                  <div className="form-row">
+                    <label className="field-label">Next Drug Test</label>
+                    <input className="input-field" type="date" name="drug_test_next" defaultValue={editEmp?.drug_test_next || ''} />
+                  </div>
+                  <div className="form-row">
+                    <label className="field-label">Medical Card Expiry</label>
+                    <input className="input-field" type="date" name="medical_card_expiry" defaultValue={editEmp?.medical_card_expiry || ''} />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* ─── Emergency Contact (collapsible) ─── */}
+          <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowEmergency(!showEmergency)}
+              style={{ color: 'var(--color-tx-muted)', marginBottom: showEmergency ? '0.5rem' : 0 }}>
+              <Phone size={14} /> {showEmergency ? 'Hide' : 'Show'} Emergency Contact
+            </button>
+            {showEmergency && (
+              <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+                <div className="form-row">
+                  <label className="field-label"><User size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> Name</label>
+                  <input className="input-field" name="emergency_name" defaultValue={editEmp?.emergency_name || ''} />
+                </div>
+                <div className="form-row">
+                  <label className="field-label"><Phone size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> Phone</label>
+                  <input className="input-field" name="emergency_phone" defaultValue={editEmp?.emergency_phone || ''} />
+                </div>
+                <div className="form-row">
+                  <label className="field-label">Relation</label>
+                  <input className="input-field" name="emergency_relation" defaultValue={editEmp?.emergency_relation || ''} placeholder="e.g., Spouse" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ─── Compensation (collapsible) ─── */}
+          <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowComp(!showComp)}
+              style={{ color: 'var(--color-tx-muted)', marginBottom: showComp ? '0.5rem' : 0 }}>
+              <AlertTriangle size={14} /> {showComp ? 'Hide' : 'Show'} Compensation
+            </button>
+            {showComp && (
+              <div className="form-grid">
+                <div className="form-row">
+                  <label className="field-label">Pay Rate</label>
+                  <input className="input-field" type="number" step="0.01" name="pay_rate" defaultValue={editEmp?.pay_rate || ''} placeholder="$0.00" />
+                </div>
+                <div className="form-row">
+                  <label className="field-label">Pay Type</label>
+                  <select className="select-field" name="pay_type" defaultValue={editEmp?.pay_type || ''}>
+                    <option value="">—</option>
+                    {PAY_TYPES.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Notes */}
+          <div className="form-row" style={{ marginTop: '0.75rem' }}>
+            <label className="field-label">Notes</label>
+            <textarea className="input-field" name="notes" rows={2} defaultValue={editEmp?.notes || ''} />
+          </div>
+
+          {/* Training Records (existing employees only) */}
+          {editEmp && <TrainingRecords employeeId={editEmp.id} />}
+
+          {/* Onboarding Checklist (existing employees only) */}
+          {editEmp && <OnboardingChecklist employeeId={editEmp.id} />}
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem', alignItems: 'center' }}>
+            {editEmp && (
+              <button type="button" className="btn btn-ghost btn-sm" style={{ marginRight: 'auto', color: 'var(--color-error)' }} onClick={() => setDeleteConfirm(editEmp)}>
+                <Trash2 size={14} /> Delete
+              </button>
+            )}
             <button type="button" className="btn btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button>
             <button type="submit" className="btn btn-primary">{editEmp ? 'Save' : 'Create'}</button>
           </div>
         </form>
       </Modal>
+
+      {/* Delete Confirm */}
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        title="Delete Employee"
+        message={`Are you sure you want to delete ${deleteConfirm?.first_name} ${deleteConfirm?.last_name}? This will also remove all training records and onboarding tasks.`}
+        confirmLabel="Delete"
+        danger
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteConfirm(null)}
+      />
     </div>
   );
 }
