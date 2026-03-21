@@ -10,6 +10,7 @@ import CompliancePage from './pages/CompliancePage';
 import LicensingPage from './pages/LicensingPage';
 import HRPage from './pages/HRPage';
 import DocumentsPage from './pages/DocumentsPage';
+import AtlasAI from './components/AI/AtlasAI';
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   // TODO: Re-enable auth gate after login is fixed
@@ -59,6 +60,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>
+        <AtlasAI />
       </AuthGate>
     </BrowserRouter>
   );
