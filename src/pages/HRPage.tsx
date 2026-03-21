@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Users, Plus, Trash2, Shield, FlaskConical, AlertTriangle, ExternalLink, Phone, User, Truck } from 'lucide-react';
+import { Users, Plus, Trash2, Shield, FlaskConical, AlertTriangle, ExternalLink, Phone, User, Truck, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatDate, daysUntil } from '../lib/utils';
 import Modal from '../components/common/Modal';
@@ -101,6 +101,7 @@ export default function HRPage() {
   const [editDriver, setEditDriver] = useState<Driver | null>(null);
   const [deptFilter, setDeptFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [showKpis, setShowKpis] = useState(true);
   const [showCredentials, setShowCredentials] = useState(false);
   const [showEmergency, setShowEmergency] = useState(false);
   const [showComp, setShowComp] = useState(false);
@@ -256,7 +257,15 @@ export default function HRPage() {
         )}
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards (collapsible) */}
+      <button
+        type="button"
+        onClick={() => setShowKpis(!showKpis)}
+        style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-tx-muted)', fontSize: '0.75rem', fontWeight: 600, padding: '0.25rem 0', marginBottom: showKpis ? '0.5rem' : '1rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}
+      >
+        {showKpis ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Workforce Summary
+      </button>
+      {showKpis && (
       <div className="kpi-grid" style={{ marginBottom: '1rem' }}>
         <div className="kpi-card">
           <div className="kpi-icon teal"><Users size={20} /></div>
@@ -283,6 +292,7 @@ export default function HRPage() {
           <div className="kpi-delta">{inactiveDrivers.length} inactive</div>
         </div>
       </div>
+      )}
 
       {/* Tabs */}
       <div className="tab-list">
