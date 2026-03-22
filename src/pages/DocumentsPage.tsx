@@ -393,7 +393,7 @@ export default function DocumentsPage() {
             </button>
           </div>
         ) : (
-          <BreadcrumbNav breadcrumb={breadcrumb} onNavigate={(id) => navigateToFolder(id)} />
+          <BreadcrumbNav breadcrumb={breadcrumb} onNavigate={(id: string) => navigateToFolder(id)} />
         )}
       </div>
 
@@ -407,7 +407,7 @@ export default function DocumentsPage() {
             <FolderTree
               folders={folderTree}
               currentFolderId={currentFolderId}
-              onSelect={(driveFolderId, name) => navigateToFolder(driveFolderId, name)}
+              onSelect={(driveFolderId: string, name: string) => navigateToFolder(driveFolderId, name)}
             />
           ) : (
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-tx-muted)', padding: '1rem 0' }}>
