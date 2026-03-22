@@ -193,8 +193,6 @@ export default function AtlasAI() {
         }
 
         // Create placeholder AI message
-        const aiMsgIndex = messages.length + 1; // +1 for user msg we just added
-        let responseMode: ResponseMode = 'general';
         let fullText = '';
 
         // Add empty AI message that we'll update as chunks arrive
