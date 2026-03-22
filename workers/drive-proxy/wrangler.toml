@@ -1,0 +1,16 @@
+name = "drive-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[vars]
+GOOGLE_REDIRECT_URI = "https://drive-proxy.ari-863.workers.dev/auth/callback"
+ALLOWED_ORIGINS = "https://hq.talaria.com,http://localhost:5173"
+HQ_REDIRECT_URL = "https://hq.talaria.com/documents"
+
+# Secrets (set via `wrangler secret put`):
+# GOOGLE_CLIENT_ID
+# GOOGLE_CLIENT_SECRET
+# SUPABASE_URL
+# SUPABASE_SERVICE_ROLE_KEY
+# ENCRYPTION_KEY          — 32-byte hex string for AES-256-GCM
+# HQ_SHARED_SECRET        — shared auth key (until JWT re-enabled)
