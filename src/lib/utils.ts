@@ -64,6 +64,10 @@ export function cn(...classes: (string | boolean | undefined | null)[]): string 
   return classes.filter(Boolean).join(' ');
 }
 
+/** Operating states for Talaria Transportation */
+export const STATES = ['PA', 'OH', 'MD', 'NJ', 'MO', 'WV', 'UT', 'NV'] as const;
+export type TalariaState = typeof STATES[number];
+
 export const GROUP_COLORS = [
   '#579bfc', '#fdab3d', '#00c875', '#e2445c',
   '#a25ddc', '#0086c0', '#ff642e', '#c4c4c4',

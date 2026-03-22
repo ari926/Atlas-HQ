@@ -25,7 +25,7 @@ interface Employee {
   medical_card_expiry: string | null; cannabis_permit_state: string | null;
 }
 
-const STATES = ['PA', 'OH', 'MD', 'NJ', 'MO', 'WV', 'UT', 'NV'];
+import { STATES } from '../../lib/utils';
 
 export default function AuditView({ open, onClose, defaultState }: Props) {
   const [selectedState, setSelectedState] = useState(defaultState || 'PA');

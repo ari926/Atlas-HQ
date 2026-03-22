@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Users, Plus, Trash2, Shield, FlaskConical, AlertTriangle, ExternalLink, Phone, User, Truck, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { formatDate, daysUntil } from '../lib/utils';
+import { formatDate, daysUntil, STATES } from '../lib/utils';
 import Modal from '../components/common/Modal';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import TrainingRecords from '../components/HR/TrainingRecords';
@@ -75,7 +75,6 @@ const DEPARTMENTS = [
 const BG_STATUSES = ['passed', 'pending', 'expired', 'not_started'];
 const DRUG_STATUSES = ['passed', 'pending', 'failed', 'not_scheduled'];
 const PAY_TYPES = ['hourly', 'salary', 'contract'];
-const STATES = ['PA', 'OH', 'MD', 'NJ', 'MO', 'WV', 'UT', 'NV'];
 
 /* ─── Helpers ─── */
 function credBadge(status: string | null): { cls: string; text: string } {
@@ -113,9 +112,10 @@ export default function HRPage() {
   };
 
   const loadDrivers = async () => {
-    const { data } = await supabase.from('drivers')
+    const { data, error } = await supabase.from('drivers')
       .select('*')
       .order('last_name');
+    if (error) toast.error('Failed to load drivers');
     setDrivers(data || []);
   };
 

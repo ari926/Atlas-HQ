@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { LayoutDashboard, ShieldCheck, CreditCard, Users, AlertTriangle, Clock, CheckCircle, TrendingUp, FileText, Truck, Calendar, ArrowRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { formatDate, daysUntil, timeAgo } from '../lib/utils';
+import { formatDate, daysUntil, timeAgo, STATES } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { useStateFilter } from '../stores/stateFilterStore';
 import QuickActions from '../components/Dashboard/QuickActions';
@@ -84,8 +84,6 @@ function scoreColor(score: number): string {
   return 'var(--color-error)';
 }
 
-const STATES = ['PA', 'OH', 'MD', 'NJ', 'MO', 'WV', 'UT', 'NV'];
-
 /* ─── Progress Bar Component ─── */
 function ProgressBar({ value, max, color, label }: { value: number; max: number; color: string; label?: string }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
@@ -133,7 +131,7 @@ export default function DashboardPage() {
       });
       setLoading(false);
     }
-    load();
+    load().catch(() => setLoading(false));
   }, []);
 
   /* ─── Computed values ─── */
@@ -322,7 +320,13 @@ export default function DashboardPage() {
   }, [stats]);
 
   if (loading) return <div className="skeleton" style={{ height: 400, borderRadius: 'var(--radius-lg)' }} />;
-  if (!stats) return null;
+  if (!stats) return (
+    <div className="empty-state" style={{ padding: '4rem' }}>
+      <AlertTriangle size={48} strokeWidth={1} />
+      <div className="empty-state-title">Unable to load dashboard</div>
+      <div className="empty-state-text">There was a problem loading data. Try refreshing the page.</div>
+    </div>
+  );
 
   return (
     <div>

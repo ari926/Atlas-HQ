@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { ShieldCheck, Plus, Grid3X3, List, Trash2, RotateCcw, FileText, AlertTriangle, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { formatDate, daysUntil } from '../lib/utils';
+import { formatDate, daysUntil, STATES } from '../lib/utils';
 import { useStateFilter } from '../stores/stateFilterStore';
 import Modal from '../components/common/Modal';
 import ConfirmDialog from '../components/common/ConfirmDialog';
@@ -48,7 +48,6 @@ const CATEGORIES = [
 ];
 
 const STATUSES = ['Compliant', 'In Progress', 'Due Soon', 'Overdue', 'Pending', 'Not Applicable'];
-const STATES = ['PA', 'OH', 'MD', 'NJ', 'MO', 'WV', 'UT', 'NV'];
 
 const RECURRENCE_OPTIONS = [
   { value: '', label: 'None (one-time)' },

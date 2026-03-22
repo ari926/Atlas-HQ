@@ -1,8 +1,7 @@
 import { Search, Bell, Sun, Moon, Menu, MapPin } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useStateFilter } from '../../stores/stateFilterStore';
-
-const STATES = ['PA', 'OH', 'MD', 'NJ', 'MO', 'WV', 'UT', 'NV'];
+import { STATES } from '../../lib/utils';
 
 export default function Header() {
   const { theme, toggleTheme, toggleSidebar, setSearchOpen } = useUIStore();
