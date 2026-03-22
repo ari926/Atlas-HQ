@@ -256,9 +256,9 @@ Frontend is built. Ari needs to run these commands:
 5. Test OAuth flow end-to-end
 
 Google Cloud credentials:
-- `GOOGLE_CLIENT_ID`: `164128185859-bqosgovmt2ch9aqptb3hte5d5hl8nrna.apps.googleusercontent.com`
-- `GOOGLE_CLIENT_SECRET`: stored in Supabase secrets
-- Redirect URI: `https://buqopylxhqdiikzqctkb.supabase.co/functions/v1/drive-callback`
+- `GOOGLE_CLIENT_ID`: `164128185859-h7h15rfnanq1o5h6rdbeln66toal2qgr.apps.googleusercontent.com`
+- `GOOGLE_CLIENT_SECRET`: stored in Cloudflare Worker secrets
+- Redirect URI: `https://drive-proxy.ari-863.workers.dev/auth/callback`
 - Consent screen: Internal (talaria.com org only)
 
 ### Also Pending
