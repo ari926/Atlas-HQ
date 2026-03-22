@@ -215,7 +215,6 @@ export default function AtlasAI() {
               try {
                 const data = JSON.parse(line.slice(6));
                 if (data.type === 'mode') {
-                  responseMode = data.mode;
                   setMessages((prev) => {
                     const updated = [...prev];
                     const last = updated[updated.length - 1];
