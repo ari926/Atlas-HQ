@@ -26,8 +26,8 @@ export default function Header() {
       <div className="state-filter">
         <MapPin size={14} />
         <select
-          value={activeState || ''}
-          onChange={(e) => setActiveState(e.target.value || null)}
+          value={activeState}
+          onChange={(e) => setActiveState(e.target.value)}
           className="state-filter-select"
         >
           <option value="">All States</option>

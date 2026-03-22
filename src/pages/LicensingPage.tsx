@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { CreditCard, Plus, ExternalLink, Trash2, LayoutGrid, Table, Calendar as CalendarIcon, Phone, Mail, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatDate, daysUntil } from '../lib/utils';
+import { useStateFilter } from '../stores/stateFilterStore';
 import Modal from '../components/common/Modal';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import LicenseEventLog from '../components/Licensing/LicenseEventLog';
@@ -75,7 +76,7 @@ export default function LicensingPage() {
   const [editLic, setEditLic] = useState<License | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<License | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
-  const [stateFilter, setStateFilter] = useState('');
+  const { activeState: stateFilter, setActiveState: setStateFilter } = useStateFilter();
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 

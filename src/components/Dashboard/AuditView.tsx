@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 interface Props {
   open: boolean;
   onClose: () => void;
-  defaultState?: string | null;
+  defaultState?: string;
 }
 
 interface ComplianceItem {

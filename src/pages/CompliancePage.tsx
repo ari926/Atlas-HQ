@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { ShieldCheck, Plus, Grid3X3, List, Trash2, RotateCcw, FileText, AlertTriangle, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatDate, daysUntil } from '../lib/utils';
+import { useStateFilter } from '../stores/stateFilterStore';
 import Modal from '../components/common/Modal';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import toast from 'react-hot-toast';
@@ -139,7 +140,7 @@ export default function CompliancePage() {
   const [loading, setLoading] = useState(true);
   const [catFilter, setCatFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [stateFilter, setStateFilter] = useState('');
+  const { activeState: stateFilter, setActiveState: setStateFilter } = useStateFilter();
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<ComplianceItem | null>(null);

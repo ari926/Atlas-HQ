@@ -1,15 +1,14 @@
 import { create } from 'zustand';
 
 interface StateFilterStore {
-  activeState: string | null; // null = All States
-  setActiveState: (state: string | null) => void;
+  activeState: string; // '' = All States
+  setActiveState: (state: string) => void;
 }
 
 export const useStateFilter = create<StateFilterStore>((set) => {
-  // Restore from sessionStorage
   const saved = sessionStorage.getItem('hq-state-filter');
   return {
-    activeState: saved || null,
+    activeState: saved || '',
     setActiveState: (state) => {
       if (state) {
         sessionStorage.setItem('hq-state-filter', state);
