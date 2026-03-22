@@ -7,7 +7,7 @@
 **Supabase Project ID**: `buqopylxhqdiikzqctkb` (shared with Atlas V2)
 **Dev Supabase ID**: `dutvbquoyjtoctjstbmv`
 **Related Project**: Atlas V2 (delivery management) — github.com/ari926/atlas-v2
-**Last Updated**: March 21, 2026 | Phases 1-5, 7 complete. Phase 6 frontend built, Worker pending deploy. Phase 8 in progress.
+**Last Updated**: March 22, 2026 | Phases 1-7 complete. Phase 6 fully deployed (worker + OAuth + Google Drive connected). Phase 8 mostly complete (Quick Actions, State Map, State Filter, Audit Mode). Phase 9 planned.
 **Google Cloud Project**: Talaria Atlas (talaria-atlas) — Drive API enabled, OAuth Internal
 **Claude API**: Anthropic account created, key stored as `CLAUDE_API_KEY` in Supabase Edge Function secrets
 **Edge Functions**: `atlas-ai` (streaming Claude proxy) deployed on prod Supabase
@@ -69,6 +69,7 @@ Atlas HQ is the corporate operations command center for Talaria Transportation L
       authStore.ts               — Zustand: auth session, profile
       boardStore.ts              — Zustand: projects board state
       uiStore.ts                 — Zustand: sidebar, theme
+      stateFilterStore.ts        — Zustand: global state filter (sessionStorage)
     pages/
       DashboardPage.tsx          — KPI cards, deadlines, activity
       ProjectsPage.tsx           — Monday-style board (table/kanban/timeline/dashboard)
@@ -89,7 +90,10 @@ Atlas HQ is the corporate operations command center for Talaria Transportation L
         cells/                   — Cell renderers (Status, Person, Date, etc.)
       Kanban/KanbanView.tsx      — Kanban board
       Timeline/TimelineView.tsx  — Timeline/Gantt view
-      Dashboard/DashboardView.tsx — Dashboard widgets
+      Dashboard/DashboardView.tsx — Dashboard widgets (Projects board)
+        QuickActions.tsx          — Quick action buttons row
+        StateMap.tsx              — State coverage hex tiles
+        AuditView.tsx             — Full state audit overlay
       Licensing/
         LicenseCalendar.tsx      — Calendar view for license dates
         LicenseCostSummary.tsx   — Fee KPI cards
@@ -168,7 +172,7 @@ All HQ tables prefixed `hq_` with RLS enabled. Authenticated users can CRUD.
 
 ## Key Patterns
 
-**Zustand Stores** — `authStore` (session), `boardStore` (projects board), `uiStore` (sidebar/theme).
+**Zustand Stores** — `authStore` (session), `boardStore` (projects board), `uiStore` (sidebar/theme), `stateFilterStore` (global state filter).
 
 **Modal Pattern** — `<Modal>` component with `open`, `onClose`, `title`, `wide`, `footer` props.
 
@@ -211,9 +215,9 @@ Cannabis-specific compliance tracking with the following features:
 | 3 | Compliance Engine | COMPLETE |
 | 4 | Licensing Overhaul | COMPLETE — 3 views (cards/table/calendar), cost tracking, event log, multi-state |
 | 5 | HR and Workforce | COMPLETE — Staff + Drivers tabs, cannabis credentials, training, onboarding |
-| 6 | Google Drive Integration | IN PROGRESS — Frontend 80% built (folder tree, file browser, search). Cloudflare Worker scaffolded but not deployed. Need: deploy worker, set secrets, add custom domain, test OAuth flow |
+| 6 | Google Drive Integration | COMPLETE — Worker deployed, OAuth connected, folder tree + file browser + search + upload working |
 | 7 | Atlas AI | COMPLETE (frontend + edge function deployed) |
-| 8 | Dashboard + Cross-Module | IN PROGRESS |
+| 8 | Dashboard + Cross-Module | MOSTLY COMPLETE — Quick Actions, State Map, Global State Filter, Audit Mode built. Remaining: Manifest Widget (needs Atlas V2 table schema), Record Linking component |
 | 9 | Projects + Permissions | PLANNED |
 
 ---
@@ -231,7 +235,7 @@ Cannabis-specific compliance tracking with the following features:
 - [ ] Compliance — evidence/proof fields, regulation reference
 - [ ] Licensing — cards/table/calendar views, cost tracking, event log
 - [ ] HR — All Staff tab (cannabis credentials, training, onboarding) + Drivers tab (read-only sync)
-- [ ] Documents — Google Drive folder tree, file browser, search, upload (pending worker deploy)
+- [ ] Documents — Google Drive folder tree, file browser, search, upload (deployed + connected)
 - [ ] AI Search — CMD+K opens overlay, local search returns results
 - [ ] Dark mode toggle persists
 - [ ] ConfirmDialog used for all destructive actions
@@ -247,20 +251,24 @@ Same as Atlas V2 — update this CLAUDE.md at the end of every session where cha
 
 ## Next Session — Pick Up Here
 
-### Phase 6: Google Drive — Deploy Worker (BLOCKED on Ari)
-Frontend is built. Ari needs to run these commands:
-1. `cd workers/drive-proxy && npx wrangler deploy`
-2. Set 6 secrets via `npx wrangler secret put` (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ENCRYPTION_KEY, HQ_SHARED_SECRET)
-3. Add custom domain `drive-proxy.talaria.com` in Cloudflare dashboard
-4. Set `VITE_HQ_SHARED_SECRET` in Cloudflare Pages env vars
-5. Test OAuth flow end-to-end
+### Phase 8 Remaining
+- **Manifest Widget** — Read-only pull from Atlas V2 tables (needs to verify table schema for manifests)
+- **Record Linking** — Reusable `RecordLink.tsx` component for cross-module badges (compliance ↔ license, employee ↔ training docs)
+- **Custom domain for drive-proxy** — Add `drive-proxy.talaria.com` in Cloudflare dashboard (currently using `drive-proxy.ari-863.workers.dev`)
 
-Google Cloud credentials:
-- `GOOGLE_CLIENT_ID`: `164128185859-h7h15rfnanq1o5h6rdbeln66toal2qgr.apps.googleusercontent.com`
-- `GOOGLE_CLIENT_SECRET`: stored in Cloudflare Worker secrets
-- Redirect URI: `https://drive-proxy.ari-863.workers.dev/auth/callback`
-- Consent screen: Internal (talaria.com org only)
+### Phase 9: Projects + Permissions (PLANNED)
+- Role-based access control
+- Project templates
+- Automations
 
 ### Also Pending
 - Re-enable auth + RLS when Supabase login is fixed
-- Phase 9: Projects + Permissions (role-based access, templates, automations)
+- New OAuth client created March 22 — Client ID unchanged, new secret stored in Worker secrets
+
+### Credentials Reference
+- `GOOGLE_CLIENT_ID`: `164128185859-h7h15rfnanq1o5h6rdbeln66toal2qgr.apps.googleusercontent.com`
+- `GOOGLE_CLIENT_SECRET`: stored in Cloudflare Worker secrets (regenerated March 22)
+- Redirect URI: `https://drive-proxy.ari-863.workers.dev/auth/callback`
+- Consent screen: Internal (talaria.com org only)
+- `VITE_HQ_SHARED_SECRET`: set in Cloudflare Pages env vars (Production)
+- `ENCRYPTION_KEY`: stored in Cloudflare Worker secrets
