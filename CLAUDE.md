@@ -7,7 +7,7 @@
 **Supabase Project ID**: `buqopylxhqdiikzqctkb` (shared with Atlas V2)
 **Dev Supabase ID**: `dutvbquoyjtoctjstbmv`
 **Related Project**: Atlas V2 (delivery management) — github.com/ari926/atlas-v2
-**Last Updated**: March 21, 2026 | Phases 3-5, 7 complete. Phase 6 OAuth ready.
+**Last Updated**: March 21, 2026 | Phases 1-5, 7 complete. Phase 6 frontend built, Worker pending deploy. Phase 8 in progress.
 **Google Cloud Project**: Talaria Atlas (talaria-atlas) — Drive API enabled, OAuth Internal
 **Claude API**: Anthropic account created, key stored as `CLAUDE_API_KEY` in Supabase Edge Function secrets
 **Edge Functions**: `atlas-ai` (streaming Claude proxy) deployed on prod Supabase
@@ -41,8 +41,8 @@ Atlas HQ is the corporate operations command center for Talaria Transportation L
 | Backend | Supabase (PostgreSQL + Auth + Storage + RLS) |
 | Hosting | Cloudflare Pages → custom domain with SSL |
 | Design | Nexus Design System, Inter font, Hydra Teal theme |
-| AI Search | Claude API via Cloudflare Worker (planned) |
-| Google Drive | Drive API v3 — read-only, files stay in Google (planned) |
+| AI Search | Claude API via Supabase Edge Function (`atlas-ai`) |
+| Google Drive | Drive API v3 via Cloudflare Worker (`drive-proxy`) — pending deploy |
 
 ---
 
@@ -75,7 +75,7 @@ Atlas HQ is the corporate operations command center for Talaria Transportation L
       CompliancePage.tsx         — Phase 3 Compliance Engine (list + matrix views)
       LicensingPage.tsx          — License cards grouped by state
       HRPage.tsx                 — Employee directory + drivers tab
-      DocumentsPage.tsx          — Placeholder for Google Drive
+      DocumentsPage.tsx          — Google Drive integration (folder tree, file browser, search)
     components/
       Auth/LoginPage.tsx         — Supabase auth login
       Layout/AppShell.tsx        — Sidebar + header + main content
@@ -90,6 +90,20 @@ Atlas HQ is the corporate operations command center for Talaria Transportation L
       Kanban/KanbanView.tsx      — Kanban board
       Timeline/TimelineView.tsx  — Timeline/Gantt view
       Dashboard/DashboardView.tsx — Dashboard widgets
+      Licensing/
+        LicenseCalendar.tsx      — Calendar view for license dates
+        LicenseCostSummary.tsx   — Fee KPI cards
+        LicenseEventLog.tsx      — License change history
+      HR/
+        TrainingRecords.tsx      — Employee training tracker
+        OnboardingChecklist.tsx  — New hire onboarding tasks
+      Documents/
+        DriveConnectCard.tsx     — Google Drive connection UI
+        FolderTree.tsx           — Folder navigation sidebar
+        BreadcrumbNav.tsx        — Breadcrumb trail
+        FileList.tsx             — File grid/list renderer
+        FileDetailModal.tsx      — File metadata editor
+        FileUpload.tsx           — Upload form
       AI/
         AtlasAI.tsx              — CMD+K AI search overlay (chat interface)
       common/
@@ -123,8 +137,8 @@ All HQ tables prefixed `hq_` with RLS enabled. Authenticated users can CRUD.
 | 4 | hq_tasks | id, project_id, group_id, title, sort_order |
 | 5 | hq_task_values | id, task_id, column_id, value |
 | 6 | hq_compliance_items | id, title, description, category, status, due_date, state, responsible_party, recurrence, recurrence_interval, evidence_date, evidence_ref, evidence_method, regulation_ref, parent_id, score_weight, attachments (JSONB) |
-| 7 | hq_licenses | id, license_type, license_number, state, issued_date, expiration_date, renewal_date, status, issuing_authority, notes |
-| 8 | hq_employees | id, auth_user_id, first_name, last_name, email, phone, role, department, hire_date, status, notes |
+| 7 | hq_licenses | id, license_type, license_number, license_category, state, issued_date, expiration_date, renewal_date, status, issuing_authority, notes, document_url, application_fee, annual_fee, renewal_fee, contact_name, contact_email, contact_phone |
+| 8 | hq_employees | id, auth_user_id, first_name, last_name, email, phone, role, department, hire_date, status, notes, background_check_status, background_check_expiry, cannabis_permit_number, cannabis_permit_state, drug_test_status, drug_test_last, drug_test_next, medical_card_expiry, emergency_contact_name, emergency_contact_phone, emergency_contact_relation, pay_rate, pay_type |
 | 9 | hq_document_folders | id, name, parent_id (self-ref FK), google_drive_folder_id |
 | 10 | hq_documents | id, name, mime_type, size_bytes, storage_path, folder_id, google_drive_id, uploaded_by |
 
@@ -195,11 +209,11 @@ Cannabis-specific compliance tracking with the following features:
 | 1 | Foundation | COMPLETE |
 | 2 | Core Modules | COMPLETE |
 | 3 | Compliance Engine | COMPLETE |
-| 4 | Licensing Overhaul | PLANNED |
-| 5 | HR and Workforce | PLANNED |
-| 6 | Google Drive Integration | IN PROGRESS — OAuth credentials created, secrets stored, need Edge Functions + frontend |
-| 7 | Atlas AI | COMPLETE (frontend) |
-| 8 | Dashboard + Cross-Module | PLANNED |
+| 4 | Licensing Overhaul | COMPLETE — 3 views (cards/table/calendar), cost tracking, event log, multi-state |
+| 5 | HR and Workforce | COMPLETE — Staff + Drivers tabs, cannabis credentials, training, onboarding |
+| 6 | Google Drive Integration | IN PROGRESS — Frontend 80% built (folder tree, file browser, search). Cloudflare Worker scaffolded but not deployed. Need: deploy worker, set secrets, add custom domain, test OAuth flow |
+| 7 | Atlas AI | COMPLETE (frontend + edge function deployed) |
+| 8 | Dashboard + Cross-Module | IN PROGRESS |
 | 9 | Projects + Permissions | PLANNED |
 
 ---
@@ -215,9 +229,9 @@ Cannabis-specific compliance tracking with the following features:
 - [ ] Compliance — list view filters (category, status, state)
 - [ ] Compliance — matrix view with per-state scores
 - [ ] Compliance — evidence/proof fields, regulation reference
-- [ ] Licensing — cards grouped by state with expiration badges
-- [ ] HR — All Staff tab shows employees, Drivers tab shows read-only driver list
-- [ ] Documents — placeholder ready for Google Drive integration
+- [ ] Licensing — cards/table/calendar views, cost tracking, event log
+- [ ] HR — All Staff tab (cannabis credentials, training, onboarding) + Drivers tab (read-only sync)
+- [ ] Documents — Google Drive folder tree, file browser, search, upload (pending worker deploy)
 - [ ] AI Search — CMD+K opens overlay, local search returns results
 - [ ] Dark mode toggle persists
 - [ ] ConfirmDialog used for all destructive actions
@@ -233,28 +247,20 @@ Same as Atlas V2 — update this CLAUDE.md at the end of every session where cha
 
 ## Next Session — Pick Up Here
 
-### Phase 6: Google Drive Integration (IN PROGRESS)
-**OAuth is set up. Build the integration.**
+### Phase 6: Google Drive — Deploy Worker (BLOCKED on Ari)
+Frontend is built. Ari needs to run these commands:
+1. `cd workers/drive-proxy && npx wrangler deploy`
+2. Set 6 secrets via `npx wrangler secret put` (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ENCRYPTION_KEY, HQ_SHARED_SECRET)
+3. Add custom domain `drive-proxy.talaria.com` in Cloudflare dashboard
+4. Set `VITE_HQ_SHARED_SECRET` in Cloudflare Pages env vars
+5. Test OAuth flow end-to-end
 
-Google Cloud credentials (stored as Supabase Edge Function secrets):
+Google Cloud credentials:
 - `GOOGLE_CLIENT_ID`: `164128185859-bqosgovmt2ch9aqptb3hte5d5hl8nrna.apps.googleusercontent.com`
 - `GOOGLE_CLIENT_SECRET`: stored in Supabase secrets
 - Redirect URI: `https://buqopylxhqdiikzqctkb.supabase.co/functions/v1/drive-callback`
 - Consent screen: Internal (talaria.com org only)
 
-**What needs building:**
-1. `drive-callback` Edge Function — OAuth token exchange (Google redirects here after consent)
-2. `drive-proxy` Edge Function — list files, search, get metadata from Drive API
-3. DB table `hq_drive_config` — store encrypted access/refresh tokens
-4. `DocumentsPage.tsx` overhaul — folder tree, file browser, search, breadcrumbs
-5. Cross-module linking — attach Drive files to compliance items, licenses, employee records
-6. Pre-built folder hierarchy auto-creation on first connect
-
-### Phase 8: Dashboard (READY)
-Pure frontend — cross-module KPI dashboard pulling from compliance, licensing, HR, drivers.
-
 ### Also Pending
-- Verify Atlas AI streaming works (CLAUDE_API_KEY secret may need re-saving)
 - Re-enable auth + RLS when Supabase login is fixed
-- Populate real expiration dates on licenses (currently seeded without dates)
-- `document_url` field added to compliance/licenses/employees but not yet shown in UI
+- Phase 9: Projects + Permissions (role-based access, templates, automations)
