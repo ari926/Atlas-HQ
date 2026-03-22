@@ -3,6 +3,10 @@ import { LayoutDashboard, ShieldCheck, CreditCard, Users, AlertTriangle, Clock, 
 import { supabase } from '../lib/supabase';
 import { formatDate, daysUntil, timeAgo } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
+import { useStateFilter } from '../stores/stateFilterStore';
+import QuickActions from '../components/Dashboard/QuickActions';
+import StateMap from '../components/Dashboard/StateMap';
+import AuditView from '../components/Dashboard/AuditView';
 
 /* ─── Types ─── */
 interface ComplianceItem {
@@ -102,7 +106,9 @@ function ProgressBar({ value, max, color, label }: { value: number; max: number;
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [auditOpen, setAuditOpen] = useState(false);
   const navigate = useNavigate();
+  const { activeState } = useStateFilter();
 
   useEffect(() => {
     async function load() {
@@ -300,6 +306,21 @@ export default function DashboardPage() {
       .reduce((sum, l) => sum + (l.renewal_fee || 0), 0);
   }, [stats]);
 
+  /* ─── State Map Data ─── */
+  const stateMapData = useMemo(() => {
+    if (!stats) return [];
+    return STATES.map(st => {
+      const s = calcComplianceScore(stats.compliance, st);
+      const licCount = stats.licenses.filter(l => l.state === st).length;
+      return {
+        state: st,
+        complianceScore: s.score,
+        licenseCount: licCount,
+        hasActivity: s.total > 0 || licCount > 0,
+      };
+    }).filter(d => d.hasActivity);
+  }, [stats]);
+
   if (loading) return <div className="skeleton" style={{ height: 400, borderRadius: 'var(--radius-lg)' }} />;
   if (!stats) return null;
 
@@ -358,6 +379,20 @@ export default function DashboardPage() {
           <div className="kpi-delta">{hrAlerts.activeCount} staff · {driverStats.active} drivers</div>
         </div>
       </div>
+
+      {/* ═══ Quick Actions ═══ */}
+      <QuickActions onOpenAudit={() => setAuditOpen(true)} />
+
+      {/* ═══ State Coverage Map ═══ */}
+      {stateMapData.length > 0 && (
+        <div className="card" style={{ marginBottom: '1rem' }}>
+          <div className="card-title" style={{ marginBottom: '0.75rem' }}>
+            <LayoutDashboard size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '0.375rem' }} />
+            State Coverage
+          </div>
+          <StateMap stateData={stateMapData} />
+        </div>
+      )}
 
       {/* ═══ Row 2: Action Items + Compliance Breakdown ═══ */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
@@ -607,6 +642,13 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* ═══ Audit Mode ═══ */}
+      <AuditView
+        open={auditOpen}
+        onClose={() => setAuditOpen(false)}
+        defaultState={activeState}
+      />
     </div>
   );
 }
