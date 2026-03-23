@@ -1,12 +1,13 @@
-import { ShieldCheck, CreditCard, UserPlus, Upload, Search, ClipboardCheck } from 'lucide-react';
+import { ShieldCheck, CreditCard, UserPlus, Upload, Search, ClipboardCheck, FileSpreadsheet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUIStore } from '../../stores/uiStore';
 
 interface Props {
   onOpenAudit: () => void;
+  onOpenImport: () => void;
 }
 
-export default function QuickActions({ onOpenAudit }: Props) {
+export default function QuickActions({ onOpenAudit, onOpenImport }: Props) {
   const navigate = useNavigate();
   const { setSearchOpen } = useUIStore();
 
@@ -15,6 +16,7 @@ export default function QuickActions({ onOpenAudit }: Props) {
     { icon: CreditCard, label: 'Add License', color: 'var(--color-blue)', onClick: () => navigate('/licensing') },
     { icon: UserPlus, label: 'Add Employee', color: 'var(--color-purple)', onClick: () => navigate('/hr') },
     { icon: Upload, label: 'Upload Document', color: 'var(--color-primary)', onClick: () => navigate('/documents') },
+    { icon: FileSpreadsheet, label: 'Bulk Import', color: 'var(--color-orange)', onClick: onOpenImport },
     { icon: Search, label: 'Atlas AI', color: 'var(--color-tx)', onClick: () => setSearchOpen(true) },
     { icon: ClipboardCheck, label: 'Run Audit', color: 'var(--color-warning)', onClick: onOpenAudit },
   ];

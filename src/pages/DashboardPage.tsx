@@ -7,6 +7,7 @@ import { useStateFilter } from '../stores/stateFilterStore';
 import QuickActions from '../components/Dashboard/QuickActions';
 import StateMap from '../components/Dashboard/StateMap';
 import AuditView from '../components/Dashboard/AuditView';
+import BulkImport from '../components/common/BulkImport';
 
 /* ─── Types ─── */
 interface ComplianceItem {
@@ -105,6 +106,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [auditOpen, setAuditOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const navigate = useNavigate();
   const { activeState } = useStateFilter();
 
@@ -385,7 +387,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ═══ Quick Actions ═══ */}
-      <QuickActions onOpenAudit={() => setAuditOpen(true)} />
+      <QuickActions onOpenAudit={() => setAuditOpen(true)} onOpenImport={() => setImportOpen(true)} />
 
       {/* ═══ State Coverage Map ═══ */}
       {stateMapData.length > 0 && (
@@ -652,6 +654,13 @@ export default function DashboardPage() {
         open={auditOpen}
         onClose={() => setAuditOpen(false)}
         defaultState={activeState}
+      />
+
+      {/* ═══ Bulk Import ═══ */}
+      <BulkImport
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImportComplete={() => window.location.reload()}
       />
     </div>
   );

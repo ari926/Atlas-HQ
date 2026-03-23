@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, Printer, Copy, CheckCircle, AlertTriangle, Clock, ShieldCheck, CreditCard, Users } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { formatDate, daysUntil } from '../../lib/utils';
+import { formatDate, daysUntil, STATES } from '../../lib/utils';
 import toast from 'react-hot-toast';
 
 interface Props {
@@ -24,8 +24,6 @@ interface Employee {
   drug_test_status: string | null; drug_test_next: string | null;
   medical_card_expiry: string | null; cannabis_permit_state: string | null;
 }
-
-import { STATES } from '../../lib/utils';
 
 export default function AuditView({ open, onClose, defaultState }: Props) {
   const [selectedState, setSelectedState] = useState(defaultState || 'PA');
