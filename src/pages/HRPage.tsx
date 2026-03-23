@@ -354,13 +354,13 @@ export default function HRPage() {
                     return (
                       <tr key={e.id}>
                         <td><strong>{e.first_name} {e.last_name}</strong></td>
-                        <td style={{ fontSize: '0.75rem' }}>{e.email || '—'}</td>
-                        <td style={{ fontSize: '0.75rem' }}>{e.department || '—'}</td>
-                        <td style={{ fontSize: '0.75rem' }}>{e.role || '—'}</td>
+                        <td>{e.email || '—'}</td>
+                        <td>{e.department || '—'}</td>
+                        <td>{e.role || '—'}</td>
                         <td><span className={`badge ${statusCls}`}>{e.status}</span></td>
-                        <td><span className={`badge ${bg.cls}`} style={{ fontSize: '0.65rem' }}>{bg.text}</span></td>
-                        <td><span className={`badge ${dt.cls}`} style={{ fontSize: '0.65rem' }}>{dt.text}</span></td>
-                        <td style={{ fontSize: '0.75rem' }}>{formatDate(e.hire_date)}</td>
+                        <td><span className={`badge ${bg.cls}`}>{bg.text}</span></td>
+                        <td><span className={`badge ${dt.cls}`}>{dt.text}</span></td>
+                        <td>{formatDate(e.hire_date)}</td>
                         <td><button className="btn btn-sm btn-ghost" onClick={() => openModal(e)}>Edit</button></td>
                       </tr>
                     );
@@ -394,18 +394,18 @@ export default function HRPage() {
                   const olnDays = daysUntil(d.oln_expiration);
                   const olnBadge = olnDays === null ? null : olnDays < 0 ? 'badge-expired' : olnDays <= 30 ? 'badge-due-soon' : null;
                   return (
-                    <tr key={d.id} style={!d.is_active ? { opacity: 0.5 } : undefined}>
-                      <td style={{ fontSize: '0.7rem', color: 'var(--color-tx-muted)' }}>{d.display_id || '—'}</td>
+                    <tr key={d.id} style={!d.is_active ? { opacity: 0.6 } : undefined}>
+                      <td style={{ color: 'var(--color-tx-muted)' }}>{d.display_id || '—'}</td>
                       <td><strong>{d.first_name} {d.last_name}</strong></td>
-                      <td style={{ fontSize: '0.75rem' }}>{d.email || '—'}</td>
-                      <td style={{ fontSize: '0.75rem' }}>{d.phone || '—'}</td>
-                      <td style={{ fontSize: '0.75rem' }}>{d.role_type || '—'}</td>
-                      <td style={{ fontSize: '0.75rem' }}>
+                      <td>{d.email || '—'}</td>
+                      <td>{d.phone || '—'}</td>
+                      <td>{d.role_type || '—'}</td>
+                      <td>
                         {d.license_number || '—'}
-                        {olnBadge && <span className={`badge ${olnBadge}`} style={{ fontSize: '0.6rem', marginLeft: 4 }}>{olnDays! < 0 ? 'Exp' : `${olnDays}d`}</span>}
+                        {olnBadge && <span className={`badge ${olnBadge}`} style={{ marginLeft: 4 }}>{olnDays! < 0 ? 'Exp' : `${olnDays}d`}</span>}
                       </td>
-                      <td style={{ fontSize: '0.75rem' }}>{d.vehicle_type ? `${d.vehicle_type}${d.vehicle_plate ? ` (${d.vehicle_plate})` : ''}` : '—'}</td>
-                      <td style={{ fontSize: '0.75rem' }}>{formatDate(d.date_hired)}</td>
+                      <td>{d.vehicle_type ? `${d.vehicle_type}${d.vehicle_plate ? ` (${d.vehicle_plate})` : ''}` : '—'}</td>
+                      <td>{formatDate(d.date_hired)}</td>
                       <td><span className={`badge ${d.is_active ? 'badge-active' : 'badge-error'}`}>{d.is_active ? 'Active' : 'Inactive'}</span></td>
                       <td><button className="btn btn-sm btn-ghost" onClick={() => openDriverModal(d)}>Edit</button></td>
                     </tr>
