@@ -1,11 +1,14 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Users, Plus, Trash2, Shield, FlaskConical, AlertTriangle, ExternalLink, Phone, User, Truck, ChevronDown, ChevronUp } from 'lucide-react';
+import { Users, Plus, Trash2, Shield, FlaskConical, AlertTriangle, ExternalLink, Phone, User, Truck, ChevronDown, ChevronUp, Monitor } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatDate, daysUntil, STATES } from '../lib/utils';
 import Modal from '../components/common/Modal';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import TrainingRecords from '../components/HR/TrainingRecords';
 import OnboardingChecklist from '../components/HR/OnboardingChecklist';
+import AccessSystems from '../components/HR/AccessSystems';
+import ITAccessTab from '../components/HR/ITAccessTab';
+import OffboardingReport from '../components/HR/OffboardingReport';
 import toast from 'react-hot-toast';
 
 /* ─── Types ─── */
@@ -89,7 +92,8 @@ function credBadge(status: string | null): { cls: string; text: string } {
    HR PAGE COMPONENT
    ═══════════════════════════════════════════ */
 export default function HRPage() {
-  const [tab, setTab] = useState<'staff' | 'drivers'>('staff');
+  const [tab, setTab] = useState<'staff' | 'drivers' | 'it'>('staff');
+  const [offboardEmp, setOffboardEmp] = useState<Employee | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
@@ -302,6 +306,10 @@ export default function HRPage() {
         <button className={`tab-btn${tab === 'drivers' ? ' active' : ''}`} onClick={() => setTab('drivers')}>
           Drivers ({drivers.length})
         </button>
+        <button className={`tab-btn${tab === 'it' ? ' active' : ''}`} onClick={() => setTab('it')}>
+          <Monitor size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '0.25rem' }} />
+          IT / Access
+        </button>
       </div>
 
       {/* Staff Tab */}
@@ -407,6 +415,11 @@ export default function HRPage() {
             </table>
           </div>
         </>
+      )}
+
+      {/* ─── IT / Access Tab ─── */}
+      {tab === 'it' && (
+        <ITAccessTab employees={employees} onOpenEmployee={(emp) => { const full = employees.find(e => e.id === emp.id); if (full) { setEditEmp(full); setModalOpen(true); } }} />
       )}
 
       {/* ─── Employee Modal ─── */}
@@ -597,11 +610,19 @@ export default function HRPage() {
           {/* Onboarding Checklist (existing employees only) */}
           {editEmp && <OnboardingChecklist employeeId={editEmp.id} />}
 
+          {/* Access & Systems (existing employees only) */}
+          {editEmp && <AccessSystems employeeId={editEmp.id} />}
+
           {/* Actions */}
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem', alignItems: 'center' }}>
             {editEmp && (
               <button type="button" className="btn btn-ghost btn-sm" style={{ marginRight: 'auto', color: 'var(--color-error)' }} onClick={() => setDeleteConfirm(editEmp)}>
                 <Trash2 size={14} /> Delete
+              </button>
+            )}
+            {editEmp?.status === 'Terminated' && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setModalOpen(false); setOffboardEmp(editEmp); }}>
+                Offboarding Report
               </button>
             )}
             <button type="button" className="btn btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button>
@@ -712,12 +733,24 @@ export default function HRPage() {
       <ConfirmDialog
         open={!!deleteConfirm}
         title="Delete Employee"
-        message={`Are you sure you want to delete ${deleteConfirm?.first_name} ${deleteConfirm?.last_name}? This will also remove all training records and onboarding tasks.`}
+        message={`Are you sure you want to delete ${deleteConfirm?.first_name} ${deleteConfirm?.last_name}? This will also remove all training records, onboarding tasks, and access records.`}
         confirmLabel="Delete"
         danger
         onConfirm={handleDelete}
         onCancel={() => setDeleteConfirm(null)}
       />
+
+      {/* Offboarding Report */}
+      {offboardEmp && (
+        <OffboardingReport
+          employeeId={offboardEmp.id}
+          employeeName={`${offboardEmp.first_name} ${offboardEmp.last_name}`}
+          employeeDepartment={offboardEmp.department}
+          employeeRole={offboardEmp.role}
+          employeeHireDate={offboardEmp.hire_date}
+          onClose={() => setOffboardEmp(null)}
+        />
+      )}
     </div>
   );
 }
