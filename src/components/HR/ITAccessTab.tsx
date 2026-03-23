@@ -1,7 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Monitor, Laptop, AlertTriangle, Shield, Search } from 'lucide-react';
+import { Monitor, Laptop, AlertTriangle, Shield, Search, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { formatDate } from '../../lib/utils';
+import Modal from '../common/Modal';
+import ConfirmDialog from '../common/ConfirmDialog';
+import toast from 'react-hot-toast';
 
 interface Employee {
   id: string;
@@ -36,7 +39,6 @@ interface HardwareRecord {
 
 interface Props {
   employees: Employee[];
-  onOpenEmployee: (emp: Employee) => void;
 }
 
 function statusBadge(status: string) {
@@ -45,7 +47,7 @@ function statusBadge(status: string) {
   return 'badge-expired';
 }
 
-export default function ITAccessTab({ employees, onOpenEmployee }: Props) {
+export default function ITAccessTab({ employees }: Props) {
   const [access, setAccess] = useState<AccessRecord[]>([]);
   const [hardware, setHardware] = useState<HardwareRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,19 +55,88 @@ export default function ITAccessTab({ employees, onOpenEmployee }: Props) {
   const [statusFilter, setStatusFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showHardware, setShowHardware] = useState(false);
+  const [accessModal, setAccessModal] = useState(false);
+  const [hardwareModal, setHardwareModal] = useState(false);
+  const [editAccess, setEditAccess] = useState<AccessRecord | null>(null);
+  const [editHardware, setEditHardware] = useState<HardwareRecord | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'access' | 'hardware'; id: string } | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      const [accRes, hwRes] = await Promise.all([
-        supabase.from('hq_employee_access').select('*').order('created_at', { ascending: false }),
-        supabase.from('hq_employee_hardware').select('*').order('created_at', { ascending: false }),
-      ]);
-      setAccess(accRes.data || []);
-      setHardware(hwRes.data || []);
-      setLoading(false);
+  const loadData = async () => {
+    const [accRes, hwRes] = await Promise.all([
+      supabase.from('hq_employee_access').select('*').order('created_at', { ascending: false }),
+      supabase.from('hq_employee_hardware').select('*').order('created_at', { ascending: false }),
+    ]);
+    setAccess(accRes.data || []);
+    setHardware(hwRes.data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => { loadData(); }, []);
+
+  /* ─── CRUD handlers ─── */
+  const handleSaveAccess = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const payload = {
+      employee_id: fd.get('employee_id') as string,
+      system_name: fd.get('system_name') as string,
+      system_category: fd.get('system_category') as string,
+      account_username: fd.get('account_username') as string || null,
+      access_level: fd.get('access_level') as string,
+      status: fd.get('status') as string,
+      granted_date: fd.get('granted_date') as string || null,
+      revoked_date: fd.get('revoked_date') as string || null,
+      revoked_by: fd.get('revoked_by') as string || null,
+    };
+    if (editAccess) {
+      const { error } = await supabase.from('hq_employee_access').update(payload).eq('id', editAccess.id);
+      if (error) { toast.error('Failed to update'); return; }
+      toast.success('Access record updated');
+    } else {
+      const { error } = await supabase.from('hq_employee_access').insert(payload);
+      if (error) { toast.error('Failed to add: ' + error.message); return; }
+      toast.success('Access record added');
     }
-    load();
-  }, []);
+    setAccessModal(false);
+    setEditAccess(null);
+    loadData();
+  };
+
+  const handleSaveHardware = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const payload = {
+      employee_id: fd.get('employee_id') as string,
+      device_type: fd.get('device_type') as string,
+      model_description: fd.get('model_description') as string || null,
+      serial_number: fd.get('serial_number') as string || null,
+      assigned_date: fd.get('assigned_date') as string || null,
+      returned_date: fd.get('returned_date') as string || null,
+      condition_on_return: fd.get('condition_on_return') as string || null,
+    };
+    if (editHardware) {
+      const { error } = await supabase.from('hq_employee_hardware').update(payload).eq('id', editHardware.id);
+      if (error) { toast.error('Failed to update'); return; }
+      toast.success('Hardware record updated');
+    } else {
+      const { error } = await supabase.from('hq_employee_hardware').insert(payload);
+      if (error) { toast.error('Failed to add: ' + error.message); return; }
+      toast.success('Hardware record added');
+    }
+    setHardwareModal(false);
+    setEditHardware(null);
+    loadData();
+  };
+
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    const table = deleteConfirm.type === 'access' ? 'hq_employee_access' : 'hq_employee_hardware';
+    const { error } = await supabase.from(table).delete().eq('id', deleteConfirm.id);
+    if (error) { toast.error('Failed to delete'); return; }
+    toast.success('Record deleted');
+    setDeleteConfirm(null);
+    loadData();
+  };
 
   const empMap = useMemo(() => {
     const map = new Map<string, Employee>();
@@ -185,9 +256,14 @@ export default function ITAccessTab({ employees, onOpenEmployee }: Props) {
 
       {/* Access Table */}
       <div className="card" style={{ marginBottom: '1rem' }}>
-        <div className="card-title" style={{ marginBottom: '0.75rem' }}>
-          <Monitor size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '0.375rem' }} />
-          System Access ({filteredAccess.length})
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div className="card-title" style={{ margin: 0 }}>
+            <Monitor size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '0.375rem' }} />
+            System Access ({filteredAccess.length})
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={() => { setEditAccess(null); setAccessModal(true); }}>
+            <Plus size={14} /> Add Access
+          </button>
         </div>
         {filteredAccess.length === 0 ? (
           <div style={{ fontSize: '0.75rem', color: 'var(--color-tx-muted)', padding: '1rem 0', textAlign: 'center' }}>No access records found</div>
@@ -203,21 +279,27 @@ export default function ITAccessTab({ employees, onOpenEmployee }: Props) {
                   <th>Status</th>
                   <th>Granted</th>
                   <th>Revoked</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {filteredAccess.map(a => {
-                  const emp = empMap.get(a.employee_id);
                   return (
-                    <tr key={a.id} style={{ cursor: emp ? 'pointer' : undefined }} onClick={() => emp && onOpenEmployee(emp)}>
+                    <tr key={a.id}>
                       <td style={{ fontWeight: 500 }}>{empName(a.employee_id)}</td>
                       <td>{a.system_name}</td>
                       <td style={{ color: 'var(--color-tx-muted)' }}>{a.account_username || '—'}</td>
-                      <td><span className="badge badge-muted" style={{ fontSize: '0.6rem' }}>{a.access_level}</span></td>
-                      <td><span className={`badge ${statusBadge(a.status)}`} style={{ fontSize: '0.6rem' }}>{a.status}</span></td>
-                      <td style={{ fontSize: '0.7rem', color: 'var(--color-tx-muted)' }}>{formatDate(a.granted_date)}</td>
-                      <td style={{ fontSize: '0.7rem', color: a.revoked_date ? 'var(--color-error)' : 'var(--color-tx-muted)' }}>
-                        {a.revoked_date ? <>{formatDate(a.revoked_date)} <span style={{ fontSize: '0.6rem' }}>by {a.revoked_by}</span></> : '—'}
+                      <td><span className="badge badge-muted">{a.access_level}</span></td>
+                      <td><span className={`badge ${statusBadge(a.status)}`}>{a.status}</span></td>
+                      <td>{formatDate(a.granted_date)}</td>
+                      <td style={{ color: a.revoked_date ? 'var(--color-error)' : undefined }}>
+                        {a.revoked_date ? <>{formatDate(a.revoked_date)} <span style={{ fontSize: '0.7rem' }}>by {a.revoked_by}</span></> : '—'}
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button className="btn btn-sm btn-ghost" onClick={() => { setEditAccess(a); setAccessModal(true); }}>Edit</button>
+                        <button className="btn btn-sm btn-ghost" style={{ color: 'var(--color-error)' }} onClick={() => setDeleteConfirm({ type: 'access', id: a.id })}>
+                          <Trash2 size={12} />
+                        </button>
                       </td>
                     </tr>
                   );
@@ -230,16 +312,21 @@ export default function ITAccessTab({ employees, onOpenEmployee }: Props) {
 
       {/* Hardware Section (collapsible) */}
       <div className="card">
-        <button
-          type="button"
-          className="card-title"
-          onClick={() => setShowHardware(!showHardware)}
-          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem', width: '100%', background: 'none', border: 'none', padding: 0, margin: 0, fontFamily: 'var(--font-family)', color: 'var(--color-tx)' }}
-        >
-          <Laptop size={14} />
-          Hardware Assignments ({filteredHardware.length})
-          <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--color-tx-muted)' }}>{showHardware ? '▲' : '▼'}</span>
-        </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="card-title"
+            onClick={() => setShowHardware(!showHardware)}
+            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem', background: 'none', border: 'none', padding: 0, margin: 0, fontFamily: 'var(--font-family)', color: 'var(--color-tx)' }}
+          >
+            <Laptop size={14} />
+            Hardware Assignments ({filteredHardware.length})
+            <span style={{ fontSize: '0.7rem', color: 'var(--color-tx-muted)' }}>{showHardware ? '▲' : '▼'}</span>
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => { setEditHardware(null); setHardwareModal(true); setShowHardware(true); }}>
+            <Plus size={14} /> Add Hardware
+          </button>
+        </div>
         {showHardware && (
           <div style={{ overflowX: 'auto', marginTop: '0.75rem' }}>
             {filteredHardware.length === 0 ? (
@@ -255,22 +342,28 @@ export default function ITAccessTab({ employees, onOpenEmployee }: Props) {
                     <th>Assigned</th>
                     <th>Returned</th>
                     <th>Condition</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredHardware.map(h => {
-                    const emp = empMap.get(h.employee_id);
                     return (
-                      <tr key={h.id} style={{ cursor: emp ? 'pointer' : undefined }} onClick={() => emp && onOpenEmployee(emp)}>
+                      <tr key={h.id}>
                         <td style={{ fontWeight: 500 }}>{empName(h.employee_id)}</td>
                         <td>{h.device_type}</td>
                         <td style={{ color: 'var(--color-tx-muted)' }}>{h.model_description || '—'}</td>
-                        <td style={{ fontSize: '0.7rem', color: 'var(--color-tx-muted)' }}>{h.serial_number || '—'}</td>
-                        <td style={{ fontSize: '0.7rem', color: 'var(--color-tx-muted)' }}>{formatDate(h.assigned_date)}</td>
-                        <td style={{ fontSize: '0.7rem', color: h.returned_date ? 'var(--color-success)' : 'var(--color-warning)' }}>
+                        <td style={{ color: 'var(--color-tx-muted)' }}>{h.serial_number || '—'}</td>
+                        <td>{formatDate(h.assigned_date)}</td>
+                        <td style={{ color: h.returned_date ? 'var(--color-success)' : 'var(--color-warning)' }}>
                           {h.returned_date ? formatDate(h.returned_date) : 'Outstanding'}
                         </td>
-                        <td>{h.condition_on_return ? <span className="badge badge-muted" style={{ fontSize: '0.6rem' }}>{h.condition_on_return}</span> : '—'}</td>
+                        <td>{h.condition_on_return ? <span className="badge badge-muted">{h.condition_on_return}</span> : '—'}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <button className="btn btn-sm btn-ghost" onClick={() => { setEditHardware(h); setHardwareModal(true); setShowHardware(true); }}>Edit</button>
+                          <button className="btn btn-sm btn-ghost" style={{ color: 'var(--color-error)' }} onClick={() => setDeleteConfirm({ type: 'hardware', id: h.id })}>
+                            <Trash2 size={12} />
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -280,6 +373,147 @@ export default function ITAccessTab({ employees, onOpenEmployee }: Props) {
           </div>
         )}
       </div>
+
+      {/* ─── Access Modal ─── */}
+      <Modal open={accessModal} onClose={() => { setAccessModal(false); setEditAccess(null); }} title={editAccess ? 'Edit System Access' : 'Add System Access'}>
+        <form onSubmit={handleSaveAccess}>
+          <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+            <div className="form-row">
+              <label className="field-label">Employee *</label>
+              <select className="select-field" name="employee_id" defaultValue={editAccess?.employee_id || ''} required>
+                <option value="">Select employee...</option>
+                {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
+              </select>
+            </div>
+            <div className="form-row">
+              <label className="field-label">System Name *</label>
+              <input className="input-field" name="system_name" defaultValue={editAccess?.system_name || ''} required placeholder="e.g. Google Workspace" />
+            </div>
+            <div className="form-row">
+              <label className="field-label">Category</label>
+              <select className="select-field" name="system_category" defaultValue={editAccess?.system_category || 'custom'}>
+                <option value="google_workspace">Google Workspace</option>
+                <option value="atlas_v2">Atlas V2</option>
+                <option value="atlas_hq">Atlas HQ</option>
+                <option value="state_portal">State Portal</option>
+                <option value="fleet_management">Fleet Management</option>
+                <option value="financial">Financial / Banking</option>
+                <option value="communication">Communication</option>
+                <option value="custom">Other / Custom</option>
+              </select>
+            </div>
+            <div className="form-row">
+              <label className="field-label">Username / Email</label>
+              <input className="input-field" name="account_username" defaultValue={editAccess?.account_username || ''} placeholder="Login username or email" />
+            </div>
+            <div className="form-row">
+              <label className="field-label">Access Level *</label>
+              <select className="select-field" name="access_level" defaultValue={editAccess?.access_level || 'user'} required>
+                <option value="owner">Owner</option>
+                <option value="admin">Admin</option>
+                <option value="manager">Manager</option>
+                <option value="user">User</option>
+                <option value="viewer">Viewer</option>
+                <option value="billing">Billing</option>
+              </select>
+            </div>
+            <div className="form-row">
+              <label className="field-label">Status *</label>
+              <select className="select-field" name="status" defaultValue={editAccess?.status || 'active'} required>
+                <option value="active">Active</option>
+                <option value="suspended">Suspended</option>
+                <option value="revoked">Revoked</option>
+              </select>
+            </div>
+            <div className="form-row">
+              <label className="field-label">Granted Date</label>
+              <input className="input-field" name="granted_date" type="date" defaultValue={editAccess?.granted_date || new Date().toISOString().split('T')[0]} />
+            </div>
+            <div className="form-row">
+              <label className="field-label">Revoked Date</label>
+              <input className="input-field" name="revoked_date" type="date" defaultValue={editAccess?.revoked_date || ''} />
+            </div>
+            <div className="form-row" style={{ gridColumn: 'span 2' }}>
+              <label className="field-label">Revoked By</label>
+              <input className="input-field" name="revoked_by" defaultValue={editAccess?.revoked_by || ''} placeholder="Name of person who revoked" />
+            </div>
+          </div>
+          <div className="modal-actions" style={{ marginTop: '1.25rem' }}>
+            <button type="button" className="btn btn-secondary" onClick={() => { setAccessModal(false); setEditAccess(null); }}>Cancel</button>
+            <button type="submit" className="btn btn-primary">{editAccess ? 'Save Changes' : 'Add Access'}</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ─── Hardware Modal ─── */}
+      <Modal open={hardwareModal} onClose={() => { setHardwareModal(false); setEditHardware(null); }} title={editHardware ? 'Edit Hardware Assignment' : 'Add Hardware Assignment'}>
+        <form onSubmit={handleSaveHardware}>
+          <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+            <div className="form-row">
+              <label className="field-label">Employee *</label>
+              <select className="select-field" name="employee_id" defaultValue={editHardware?.employee_id || ''} required>
+                <option value="">Select employee...</option>
+                {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
+              </select>
+            </div>
+            <div className="form-row">
+              <label className="field-label">Device Type *</label>
+              <select className="select-field" name="device_type" defaultValue={editHardware?.device_type || ''} required>
+                <option value="">Select type...</option>
+                <option value="Laptop">Laptop</option>
+                <option value="Desktop">Desktop</option>
+                <option value="Phone">Phone</option>
+                <option value="Tablet">Tablet</option>
+                <option value="Monitor">Monitor</option>
+                <option value="Printer">Printer</option>
+                <option value="Scanner">Scanner</option>
+                <option value="Hotspot">Hotspot</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div className="form-row">
+              <label className="field-label">Model / Description</label>
+              <input className="input-field" name="model_description" defaultValue={editHardware?.model_description || ''} placeholder="e.g. MacBook Air M2" />
+            </div>
+            <div className="form-row">
+              <label className="field-label">Serial / Asset #</label>
+              <input className="input-field" name="serial_number" defaultValue={editHardware?.serial_number || ''} placeholder="Serial number or asset tag" />
+            </div>
+            <div className="form-row">
+              <label className="field-label">Assigned Date</label>
+              <input className="input-field" name="assigned_date" type="date" defaultValue={editHardware?.assigned_date || new Date().toISOString().split('T')[0]} />
+            </div>
+            <div className="form-row">
+              <label className="field-label">Returned Date</label>
+              <input className="input-field" name="returned_date" type="date" defaultValue={editHardware?.returned_date || ''} />
+            </div>
+            <div className="form-row" style={{ gridColumn: 'span 2' }}>
+              <label className="field-label">Condition on Return</label>
+              <select className="select-field" name="condition_on_return" defaultValue={editHardware?.condition_on_return || ''}>
+                <option value="">Not returned yet</option>
+                <option value="Good">Good</option>
+                <option value="Fair">Fair</option>
+                <option value="Poor">Poor</option>
+                <option value="Damaged">Damaged</option>
+                <option value="Lost">Lost</option>
+              </select>
+            </div>
+          </div>
+          <div className="modal-actions" style={{ marginTop: '1.25rem' }}>
+            <button type="button" className="btn btn-secondary" onClick={() => { setHardwareModal(false); setEditHardware(null); }}>Cancel</button>
+            <button type="submit" className="btn btn-primary">{editHardware ? 'Save Changes' : 'Add Hardware'}</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ─── Delete Confirm ─── */}
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        title={`Delete ${deleteConfirm?.type === 'access' ? 'Access' : 'Hardware'} Record`}
+        message="This action cannot be undone. Are you sure?"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteConfirm(null)}
+      />
     </div>
   );
 }

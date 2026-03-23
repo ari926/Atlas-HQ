@@ -419,7 +419,7 @@ export default function HRPage() {
 
       {/* ─── IT / Access Tab ─── */}
       {tab === 'it' && (
-        <ITAccessTab employees={employees} onOpenEmployee={(emp) => { const full = employees.find(e => e.id === emp.id); if (full) { setEditEmp(full); setModalOpen(true); } }} />
+        <ITAccessTab employees={employees} />
       )}
 
       {/* ─── Employee Modal ─── */}
