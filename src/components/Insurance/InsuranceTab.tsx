@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { Plus, Trash2, ExternalLink, DollarSign, Shield, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Plus, Trash2, ExternalLink, DollarSign, Shield } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { formatDate, daysUntil, STATES } from '../../lib/utils';
 import { useStateFilter } from '../../stores/stateFilterStore';
