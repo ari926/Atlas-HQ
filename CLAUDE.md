@@ -98,6 +98,8 @@ Atlas HQ is the corporate operations command center for Talaria Transportation L
         LicenseCalendar.tsx      — Calendar view for license dates
         LicenseCostSummary.tsx   — Fee KPI cards
         LicenseEventLog.tsx      — License change history
+      Insurance/
+        InsuranceTab.tsx         — Insurance policies CRUD, KPIs, filters
       HR/
         TrainingRecords.tsx      — Employee training tracker
         OnboardingChecklist.tsx  — New hire onboarding tasks
@@ -145,6 +147,7 @@ All HQ tables prefixed `hq_` with RLS enabled. Authenticated users can CRUD.
 | 8 | hq_employees | id, auth_user_id, first_name, last_name, email, phone, role, department, hire_date, status, notes, background_check_status, background_check_expiry, cannabis_permit_number, cannabis_permit_state, drug_test_status, drug_test_last, drug_test_next, medical_card_expiry, emergency_contact_name, emergency_contact_phone, emergency_contact_relation, pay_rate, pay_type |
 | 9 | hq_document_folders | id, name, parent_id (self-ref FK), google_drive_folder_id |
 | 10 | hq_documents | id, name, mime_type, size_bytes, storage_path, folder_id, google_drive_id, uploaded_by |
+| 11 | hq_insurance_policies | id, policy_number, policy_type, carrier, state, coverage_amount, aggregate_limit, deductible, premium_annual, premium_monthly, effective_date, expiration_date, renewal_date, status, agent_name, agent_email, agent_phone, broker_company, document_url, notes |
 
 **Shared tables read (not written) by HQ:**
 - `profiles` — user accounts (auth)
