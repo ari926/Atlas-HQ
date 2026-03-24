@@ -8,6 +8,7 @@ import DashboardPage from './pages/DashboardPage';
 import ProjectsPage from './pages/ProjectsPage';
 import CompliancePage from './pages/CompliancePage';
 import LicensingPage from './pages/LicensingPage';
+import InsurancePage from './pages/InsurancePage';
 import HRPage from './pages/HRPage';
 import DocumentsPage from './pages/DocumentsPage';
 import AtlasAI from './components/AI/AtlasAI';
@@ -55,6 +56,7 @@ export default function App() {
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/compliance" element={<CompliancePage />} />
             <Route path="/licensing" element={<LicensingPage />} />
+            <Route path="/insurance" element={<InsurancePage />} />
             <Route path="/hr" element={<HRPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
