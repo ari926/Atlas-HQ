@@ -4,6 +4,7 @@ import {
   Table2,
   ShieldCheck,
   CreditCard,
+  Umbrella,
   Users,
   FolderOpen,
   LogOut,
@@ -19,6 +20,7 @@ const navItems = [
   { to: '/projects', icon: Table2, label: 'Projects' },
   { to: '/compliance', icon: ShieldCheck, label: 'Compliance' },
   { to: '/licensing', icon: CreditCard, label: 'Licensing' },
+  { to: '/insurance', icon: Umbrella, label: 'Insurance' },
   { to: '/hr', icon: Users, label: 'HR' },
   { to: '/documents', icon: FolderOpen, label: 'Documents' },
 ];

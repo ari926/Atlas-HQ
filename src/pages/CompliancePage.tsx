@@ -1,6 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { ShieldCheck, Plus, Grid3X3, List, Trash2, RotateCcw, FileText, AlertTriangle, ExternalLink, Umbrella } from 'lucide-react';
-import InsuranceTab from '../components/Insurance/InsuranceTab';
+import { ShieldCheck, Plus, Grid3X3, List, Trash2, RotateCcw, FileText, AlertTriangle, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatDate, daysUntil, STATES } from '../lib/utils';
 import { useStateFilter } from '../stores/stateFilterStore';
@@ -136,7 +135,6 @@ function scoreColor(score: number): string {
    COMPLIANCE PAGE COMPONENT
    ═══════════════════════════════════════════ */
 export default function CompliancePage() {
-  const [activeTab, setActiveTab] = useState<'compliance' | 'insurance'>('compliance');
   const [items, setItems] = useState<ComplianceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [catFilter, setCatFilter] = useState('');
@@ -311,44 +309,22 @@ export default function CompliancePage() {
       <div className="view-header">
         <div>
           <h1 className="view-title">Compliance</h1>
-          <p className="view-subtitle">
-            {activeTab === 'compliance'
-              ? `Cannabis transportation compliance tracking across ${STATES.length} states`
-              : 'Insurance policy tracking and coverage management'}
-          </p>
+          <p className="view-subtitle">Cannabis transportation compliance tracking across {STATES.length} states</p>
         </div>
-        {activeTab === 'compliance' && (
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <div className="board-view-toggle">
-              <button className={`board-view-btn${viewMode === 'list' ? ' active' : ''}`} onClick={() => setViewMode('list')}>
-                <List size={14} /> List
-              </button>
-              <button className={`board-view-btn${viewMode === 'matrix' ? ' active' : ''}`} onClick={() => setViewMode('matrix')}>
-                <Grid3X3 size={14} /> Matrix
-              </button>
-            </div>
-            <button className="btn btn-primary btn-sm" onClick={() => openModal()}>
-              <Plus size={14} /> Add Item
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <div className="board-view-toggle">
+            <button className={`board-view-btn${viewMode === 'list' ? ' active' : ''}`} onClick={() => setViewMode('list')}>
+              <List size={14} /> List
+            </button>
+            <button className={`board-view-btn${viewMode === 'matrix' ? ' active' : ''}`} onClick={() => setViewMode('matrix')}>
+              <Grid3X3 size={14} /> Matrix
             </button>
           </div>
-        )}
+          <button className="btn btn-primary btn-sm" onClick={() => openModal()}>
+            <Plus size={14} /> Add Item
+          </button>
+        </div>
       </div>
-
-      {/* ─── Tab Bar ─── */}
-      <div className="tab-list" style={{ marginBottom: '1.25rem' }}>
-        <button className={`tab-btn${activeTab === 'compliance' ? ' active' : ''}`} onClick={() => setActiveTab('compliance')}>
-          <ShieldCheck size={14} /> Compliance Items
-        </button>
-        <button className={`tab-btn${activeTab === 'insurance' ? ' active' : ''}`} onClick={() => setActiveTab('insurance')}>
-          <Umbrella size={14} /> Insurance Policies
-        </button>
-      </div>
-
-      {/* ─── Insurance Tab ─── */}
-      {activeTab === 'insurance' && <InsuranceTab />}
-
-      {/* ─── Compliance Tab Content ─── */}
-      {activeTab === 'compliance' && <>
 
       {/* ─── Score Cards ─── */}
       <div className="kpi-grid" style={{ marginBottom: '1.25rem' }}>
@@ -536,8 +512,6 @@ export default function CompliancePage() {
           </table>
         </div>
       )}
-
-      </>}
 
       {/* ─── Add/Edit Modal ─── */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editItem ? 'Edit Compliance Item' : 'New Compliance Item'} wide>
