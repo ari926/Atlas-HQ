@@ -1,10 +1,15 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { Plus, Trash2, ExternalLink, DollarSign, Shield } from 'lucide-react';
+import { Trash2, ExternalLink, Shield } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { formatDate, daysUntil, STATES } from '../../lib/utils';
 import { useStateFilter } from '../../stores/stateFilterStore';
 import Modal from '../common/Modal';
 import ConfirmDialog from '../common/ConfirmDialog';
+import InsuranceCostSummary from './InsuranceCostSummary';
+import InsuranceCalendar from './InsuranceCalendar';
+import InsuranceCoverageMatrix from './InsuranceCoverageMatrix';
+import InsuranceEventLog from './InsuranceEventLog';
+import InsuranceCertificates from './InsuranceCertificates';
 import toast from 'react-hot-toast';
 
 /* ─── Types ─── */
@@ -82,10 +87,16 @@ function formatCurrency(n: number | null | undefined): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
 }
 
+export type InsuranceViewMode = 'list' | 'calendar' | 'matrix';
+
+interface TabProps {
+  viewMode: InsuranceViewMode;
+}
+
 /* ═══════════════════════════════════════════
    INSURANCE TAB COMPONENT
    ═══════════════════════════════════════════ */
-export default function InsuranceTab() {
+export default function InsuranceTab({ viewMode }: TabProps) {
   const [policies, setPolicies] = useState<InsurancePolicy[]>([]);
   const [loading, setLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState('');
@@ -136,15 +147,6 @@ export default function InsuranceTab() {
     if (stateFilter && p.state !== stateFilter) return false;
     return true;
   }), [policies, typeFilter, statusFilter, stateFilter]);
-
-  /* ─── KPI Calculations ─── */
-  const kpis = useMemo(() => {
-    const active = policies.filter(p => p.status === 'Active' || p.status === 'Expiring Soon');
-    const totalPremium = active.reduce((s, p) => s + (p.premium_annual || 0), 0);
-    const expiringSoon = policies.filter(p => p.status === 'Expiring Soon').length;
-    const expired = policies.filter(p => p.status === 'Expired').length;
-    return { totalActive: active.length, totalPremium, expiringSoon, expired };
-  }, [policies]);
 
   /* ─── Modal ─── */
   const openModal = (policy?: InsurancePolicy) => {
@@ -215,43 +217,8 @@ export default function InsuranceTab() {
 
   return (
     <>
-      {/* ─── Add Button ─── */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
-        <button className="btn btn-primary btn-sm" onClick={() => openModal()}>
-          <Plus size={14} /> Add Policy
-        </button>
-      </div>
-
       {/* ─── KPI Cards ─── */}
-      <div className="kpi-grid" style={{ marginBottom: '1.25rem' }}>
-        <div className="kpi-card">
-          <div className="kpi-label">Active Policies</div>
-          <div className="kpi-value">{kpis.totalActive}</div>
-          <div className="kpi-delta">{policies.length} total</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-label">Annual Premium</div>
-          <div className="kpi-value" style={{ fontSize: 'var(--text-lg)' }}>
-            <DollarSign size={16} style={{ display: 'inline', verticalAlign: 'middle', opacity: 0.6 }} />
-            {kpis.totalPremium > 0 ? formatCurrency(kpis.totalPremium).replace('$', '') : '—'}
-          </div>
-          <div className="kpi-delta">across active policies</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-label">Expiring Soon</div>
-          <div className="kpi-value" style={{ color: kpis.expiringSoon > 0 ? 'var(--color-warning)' : 'var(--color-tx)' }}>
-            {kpis.expiringSoon}
-          </div>
-          <div className="kpi-delta">within 30 days</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-label">Expired</div>
-          <div className="kpi-value" style={{ color: kpis.expired > 0 ? 'var(--color-error)' : 'var(--color-success)' }}>
-            {kpis.expired}
-          </div>
-          <div className="kpi-delta">{kpis.expired === 0 ? 'all current' : 'need renewal'}</div>
-        </div>
-      </div>
+      <InsuranceCostSummary policies={policies} />
 
       {/* ─── Filter Bar ─── */}
       <div className="filter-bar">
@@ -270,8 +237,28 @@ export default function InsuranceTab() {
         </select>
       </div>
 
+      {/* ─── Calendar View ─── */}
+      {viewMode === 'calendar' && (
+        <InsuranceCalendar
+          policies={policies}
+          onSelect={(p) => openModal(p as InsurancePolicy)}
+          typeFilter={typeFilter}
+        />
+      )}
+
+      {/* ─── Matrix View ─── */}
+      {viewMode === 'matrix' && (
+        <InsuranceCoverageMatrix
+          policies={policies}
+          onCellClick={(policyType, state) => {
+            setTypeFilter(policyType);
+            setStateFilter(state);
+          }}
+        />
+      )}
+
       {/* ─── Policy List ─── */}
-      {filtered.length === 0 ? (
+      {viewMode === 'list' && (filtered.length === 0 ? (
         <div className="empty-state">
           <Shield size={48} strokeWidth={1} />
           <div className="empty-state-title">{policies.length === 0 ? 'No insurance policies' : 'No policies match filters'}</div>
@@ -322,6 +309,11 @@ export default function InsuranceTab() {
             );
           })}
         </div>
+      ))}
+
+      {/* ─── Certificates Section (list view only) ─── */}
+      {viewMode === 'list' && policies.length > 0 && (
+        <InsuranceCertificates policies={policies} />
       )}
 
       {/* ─── Add/Edit Modal ─── */}
@@ -458,6 +450,9 @@ export default function InsuranceTab() {
             <label className="field-label">Notes</label>
             <textarea className="input-field" name="notes" rows={3} defaultValue={editPolicy?.notes || ''} />
           </div>
+
+          {/* Claims & History */}
+          {editPolicy && <InsuranceEventLog policyId={editPolicy.id} />}
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem', alignItems: 'center' }}>
