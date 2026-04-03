@@ -1,10 +1,26 @@
+import { useState } from 'react';
 import { useHealthStore } from '../stores/healthStore';
-import { Heart, FileText, ShieldAlert, Activity, Clock } from 'lucide-react';
+import { Heart, FileText, ShieldAlert, Activity, Clock, Plus, TrendingUp } from 'lucide-react';
 import { formatDate, calculateAge } from '../lib/utils';
+import Modal from '../components/common/Modal';
+
+const VITAL_TYPES = [
+  { value: 'blood_pressure', label: 'Blood Pressure', unit: 'mmHg', hasSecondary: true, secondaryLabel: 'Diastolic' },
+  { value: 'heart_rate', label: 'Heart Rate', unit: 'bpm', hasSecondary: false },
+  { value: 'temperature', label: 'Temperature', unit: '\u00B0F', hasSecondary: false },
+  { value: 'weight', label: 'Weight', unit: 'lbs', hasSecondary: false },
+  { value: 'blood_glucose', label: 'Blood Glucose', unit: 'mg/dL', hasSecondary: false },
+  { value: 'spo2', label: 'SpO2', unit: '%', hasSecondary: false },
+  { value: 'respiratory_rate', label: 'Respiratory Rate', unit: 'breaths/min', hasSecondary: false },
+  { value: 'hrv', label: 'HRV', unit: 'ms', hasSecondary: false },
+  { value: 'sleep_score', label: 'Sleep Score', unit: '/100', hasSecondary: false },
+  { value: 'steps', label: 'Steps', unit: 'steps', hasSecondary: false },
+];
 
 export default function DashboardPage() {
-  const { familyMembers, activeMemberId, reports, restrictions, metrics, vitals } = useHealthStore();
+  const { familyMembers, activeMemberId, reports, restrictions, metrics, vitals, addVital } = useHealthStore();
   const member = familyMembers.find(m => m.id === activeMemberId);
+  const [vitalModalOpen, setVitalModalOpen] = useState(false);
 
   if (!member) {
     return (
@@ -20,8 +36,15 @@ export default function DashboardPage() {
   const totalReports = reports.length;
   const activeRestrictions = restrictions.filter(r => r.confirmed).length;
   const totalMetrics = metrics.length;
-  const latestVital = vitals[0];
   const criticalMetrics = metrics.filter(m => m.status === 'critical' || m.status === 'high' || m.status === 'low').length;
+
+  // Group vitals by type for latest reading
+  const latestVitals = new Map<string, typeof vitals[0]>();
+  for (const v of vitals) {
+    if (!latestVitals.has(v.vital_type)) {
+      latestVitals.set(v.vital_type, v);
+    }
+  }
 
   return (
     <div>
@@ -34,6 +57,9 @@ export default function DashboardPage() {
             {member.blood_type ? ` \u00B7 ${member.blood_type}` : ''}
           </p>
         </div>
+        <button className="btn btn-primary" onClick={() => setVitalModalOpen(true)}>
+          <Plus size={14} /> Record Vital
+        </button>
       </div>
 
       <div className="kpi-grid">
@@ -61,18 +87,26 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {latestVital && (
+      {latestVitals.size > 0 && (
         <div className="section">
-          <h2 className="section-title">Latest Vital</h2>
-          <div className="kpi-card" style={{ maxWidth: 300 }}>
-            <div className="kpi-icon"><Clock size={20} /></div>
-            <div className="kpi-label">{latestVital.vital_type.replace(/_/g, ' ')}</div>
-            <div className="kpi-value">
-              {latestVital.value_primary}
-              {latestVital.value_secondary ? `/${latestVital.value_secondary}` : ''}
-              {latestVital.unit ? ` ${latestVital.unit}` : ''}
-            </div>
-            <div className="kpi-sub">{formatDate(latestVital.recorded_at)}</div>
+          <h2 className="section-title"><TrendingUp size={16} style={{ display: 'inline', verticalAlign: '-2px', marginRight: '0.4rem' }} />Latest Vitals</h2>
+          <div className="kpi-grid">
+            {Array.from(latestVitals.entries()).map(([type, v]) => {
+              const def = VITAL_TYPES.find(vt => vt.value === type);
+              return (
+                <div key={type} className="kpi-card">
+                  <div className="kpi-icon" style={{ color: 'var(--color-primary)' }}><Clock size={16} /></div>
+                  <div className="kpi-label">{def?.label ?? type.replace(/_/g, ' ')}</div>
+                  <div className="kpi-value">
+                    {v.value_primary}{v.value_secondary ? `/${v.value_secondary}` : ''}
+                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 400, color: 'var(--color-tx-muted)', marginLeft: '0.25rem' }}>
+                      {v.unit ?? def?.unit ?? ''}
+                    </span>
+                  </div>
+                  <div className="kpi-sub">{formatDate(v.recorded_at)}</div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -107,6 +141,88 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      <VitalModal
+        open={vitalModalOpen}
+        onClose={() => setVitalModalOpen(false)}
+        memberId={activeMemberId}
+        onSave={addVital}
+      />
     </div>
+  );
+}
+
+function VitalModal({ open, onClose, memberId, onSave }: {
+  open: boolean;
+  onClose: () => void;
+  memberId: string | null;
+  onSave: (vital: Record<string, unknown>) => Promise<void>;
+}) {
+  const [vitalType, setVitalType] = useState('blood_pressure');
+  const [saving, setSaving] = useState(false);
+  const def = VITAL_TYPES.find(vt => vt.value === vitalType);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!memberId) return;
+    setSaving(true);
+
+    const fd = new FormData(e.currentTarget);
+    await onSave({
+      member_id: memberId,
+      vital_type: vitalType,
+      value_primary: Number(fd.get('value_primary')),
+      value_secondary: fd.get('value_secondary') ? Number(fd.get('value_secondary')) : null,
+      unit: def?.unit ?? null,
+      recorded_at: (fd.get('recorded_at') as string) || new Date().toISOString(),
+      source: 'manual',
+      notes: (fd.get('notes') as string) || null,
+    });
+
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Record Vital">
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label className="form-label">Vital Type</label>
+          <select className="select-field" value={vitalType} onChange={e => setVitalType(e.target.value)}>
+            {VITAL_TYPES.map(vt => <option key={vt.value} value={vt.value}>{vt.label}</option>)}
+          </select>
+        </div>
+
+        <div className="form-grid">
+          <div className="form-group">
+            <label className="form-label">{def?.hasSecondary ? 'Systolic' : 'Value'} ({def?.unit}) *</label>
+            <input name="value_primary" type="number" step="any" className="input-field" required />
+          </div>
+          {def?.hasSecondary && (
+            <div className="form-group">
+              <label className="form-label">{def.secondaryLabel} ({def.unit})</label>
+              <input name="value_secondary" type="number" step="any" className="input-field" />
+            </div>
+          )}
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Date & Time</label>
+          <input name="recorded_at" type="datetime-local" className="input-field" defaultValue={new Date().toISOString().slice(0, 16)} />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Notes</label>
+          <input name="notes" className="input-field" placeholder="Optional notes" />
+        </div>
+
+        <div className="form-actions">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn btn-primary" disabled={saving}>
+            {saving ? 'Saving...' : 'Record'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

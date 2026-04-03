@@ -40,6 +40,7 @@ export interface HealthReport {
   report_date: string | null;
   title: string;
   file_url: string | null;
+  storage_path: string | null;
   storage_type: string;
   file_mime_type: string | null;
   ai_summary: string | null;
@@ -95,6 +96,9 @@ interface HealthState {
   addRestriction: (r: Partial<Restriction>) => Promise<void>;
   updateRestriction: (id: string, updates: Partial<Restriction>) => Promise<void>;
   deleteRestriction: (id: string) => Promise<void>;
+  uploadReport: (memberId: string, file: File, title: string, reportType: string, reportDate: string | null) => Promise<void>;
+  deleteReport: (id: string) => Promise<void>;
+  addVital: (vital: Partial<Vital>) => Promise<void>;
   computeRegionHealth: () => void;
 }
 
@@ -219,6 +223,72 @@ export const useHealthStore = create<HealthState>((set, get) => ({
       return;
     }
     toast.success('Restriction deleted');
+    const memberId = get().activeMemberId;
+    if (memberId) get().loadMemberData(memberId);
+  },
+
+  uploadReport: async (memberId: string, file: File, title: string, reportType: string, reportDate: string | null) => {
+    const ext = file.name.split('.').pop() ?? 'pdf';
+    const path = `${memberId}/${Date.now()}.${ext}`;
+
+    const { error: storageError } = await supabase.storage
+      .from('health-reports')
+      .upload(path, file, { contentType: file.type });
+
+    if (storageError) {
+      toast.error('Failed to upload file');
+      return;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('health-reports')
+      .getPublicUrl(path);
+
+    const { error } = await supabase.from('health_reports').insert({
+      member_id: memberId,
+      title,
+      report_type: reportType,
+      report_date: reportDate,
+      file_url: publicUrl,
+      storage_path: path,
+      storage_type: 'supabase',
+      file_mime_type: file.type,
+      file_size_bytes: file.size,
+      processing_status: 'pending',
+    });
+
+    if (error) {
+      toast.error('Failed to save report record');
+      return;
+    }
+
+    toast.success('Report uploaded successfully');
+    get().loadMemberData(memberId);
+  },
+
+  deleteReport: async (id: string) => {
+    const report = get().reports.find(r => r.id === id);
+    if (report?.storage_path) {
+      await supabase.storage.from('health-reports').remove([report.storage_path]);
+    }
+
+    const { error } = await supabase.from('health_reports').delete().eq('id', id);
+    if (error) {
+      toast.error('Failed to delete report');
+      return;
+    }
+    toast.success('Report deleted');
+    const memberId = get().activeMemberId;
+    if (memberId) get().loadMemberData(memberId);
+  },
+
+  addVital: async (vital: Partial<Vital>) => {
+    const { error } = await supabase.from('vitals').insert(vital);
+    if (error) {
+      toast.error('Failed to add vital');
+      return;
+    }
+    toast.success('Vital recorded');
     const memberId = get().activeMemberId;
     if (memberId) get().loadMemberData(memberId);
   },
