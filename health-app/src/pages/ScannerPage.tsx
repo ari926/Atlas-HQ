@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { Camera, SwitchCamera, Utensils, Pill } from 'lucide-react';
-import { useHealthStore } from '../stores/healthStore';
+import { useHealthStore, analyzeScanImage, type ScanResult } from '../stores/healthStore';
 
 type ScanType = 'food' | 'medicine';
 
@@ -9,41 +9,64 @@ export default function ScannerPage() {
   const member = familyMembers.find(m => m.id === activeMemberId);
   const [scanType, setScanType] = useState<ScanType>('food');
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [imageMimeType, setImageMimeType] = useState<string>('image/jpeg');
   const [analyzing, setAnalyzing] = useState(false);
-  const [result, setResult] = useState<ScanResultData | null>(null);
+  const [result, setResult] = useState<ScanResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const confirmedRestrictions = restrictions.filter(r => r.confirmed);
 
   const handleCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setImageMimeType(file.type);
     const reader = new FileReader();
     reader.onload = () => {
-      setCapturedImage(reader.result as string);
+      const dataUrl = reader.result as string;
+      setCapturedImage(dataUrl);
+      // Extract base64 without the data URL prefix
+      setImageBase64(dataUrl.split(',')[1]);
       setResult(null);
     };
     reader.readAsDataURL(file);
   };
 
   const handleAnalyze = async () => {
-    if (!capturedImage || !activeMemberId) return;
+    if (!imageBase64 || !activeMemberId) return;
     setAnalyzing(true);
-    // TODO: Send to health-ai Edge Function for analysis
-    // For now, show placeholder
-    setTimeout(() => {
+
+    const scanResult = await analyzeScanImage(
+      imageBase64,
+      imageMimeType,
+      scanType,
+      activeMemberId,
+      confirmedRestrictions.map(r => ({
+        item_name: r.item_name,
+        severity: r.severity,
+        restriction_type: r.restriction_type,
+        reaction: r.reaction,
+      }))
+    );
+
+    if (scanResult) {
+      setResult(scanResult);
+    } else {
       setResult({
-        item_name: 'Sample Item',
-        overall_result: 'safe',
-        ingredients: ['Sample ingredient 1', 'Sample ingredient 2'],
+        item_name: 'Unknown',
+        overall_result: 'caution',
+        ingredients: [],
         flagged: [],
-        explanation: 'AI analysis will be connected in Phase 5. Upload an image and the AI will identify the item and check it against your restrictions.',
+        explanation: 'Could not analyze this image. Make sure the AI backend is connected and try again.',
       });
-      setAnalyzing(false);
-    }, 1500);
+    }
+    setAnalyzing(false);
   };
 
   const resetScan = () => {
     setCapturedImage(null);
+    setImageBase64(null);
     setResult(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -72,6 +95,9 @@ export default function ScannerPage() {
         <div className="scanner-capture-zone" onClick={() => fileInputRef.current?.click()}>
           <Camera size={48} />
           <p>Tap to take a photo of {scanType === 'food' ? 'food or its label' : 'medicine or its label'}</p>
+          <p style={{ fontSize: 'var(--text-xs)', marginTop: '0.5rem', color: 'var(--color-tx-faint)' }}>
+            AI will identify the item and check it against {member?.first_name ?? 'the member'}'s {confirmedRestrictions.length} restriction{confirmedRestrictions.length !== 1 ? 's' : ''}
+          </p>
           <input
             ref={fileInputRef}
             type="file"
@@ -102,7 +128,7 @@ export default function ScannerPage() {
       {result && (
         <div className={`scan-result scan-result-${result.overall_result}`}>
           <div className="scan-result-header">
-            <h2>{result.overall_result.toUpperCase()}</h2>
+            <h2>{result.overall_result === 'safe' ? 'SAFE' : result.overall_result === 'unsafe' ? 'UNSAFE' : 'CAUTION'}</h2>
             <p>{result.item_name}</p>
           </div>
           <div className="scan-result-body">
@@ -111,7 +137,7 @@ export default function ScannerPage() {
                 <h4>Ingredients</h4>
                 <div className="restriction-chips">
                   {result.ingredients.map((ing, i) => {
-                    const isFlagged = result.flagged.some(f => f.ingredient === ing);
+                    const isFlagged = result.flagged.some(f => f.ingredient.toLowerCase() === ing.toLowerCase());
                     return (
                       <span key={i} className={`badge ${isFlagged ? 'badge-error' : 'badge-muted'}`}>
                         {ing}
@@ -123,11 +149,13 @@ export default function ScannerPage() {
             )}
             {result.flagged.length > 0 && (
               <div>
-                <h4>Flagged</h4>
+                <h4>Flagged Items</h4>
                 {result.flagged.map((f, i) => (
                   <div key={i} className="flagged-item">
                     <strong>{f.ingredient}</strong> — {f.reason}
-                    <span className={`badge badge-${f.severity === 'critical' ? 'error' : 'warning'}`}>{f.severity}</span>
+                    <span className={`badge badge-${f.severity === 'critical' ? 'error' : 'warning'}`} style={{ marginLeft: '0.5rem' }}>
+                      {f.severity}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -137,11 +165,11 @@ export default function ScannerPage() {
         </div>
       )}
 
-      {restrictions.length > 0 && (
+      {confirmedRestrictions.length > 0 && (
         <div className="section" style={{ marginTop: '2rem' }}>
-          <h3 className="section-title">Checking Against ({restrictions.filter(r => r.confirmed).length} restrictions)</h3>
+          <h3 className="section-title">Checking Against ({confirmedRestrictions.length} restrictions)</h3>
           <div className="restriction-chips">
-            {restrictions.filter(r => r.confirmed).map(r => (
+            {confirmedRestrictions.map(r => (
               <span key={r.id} className={`badge badge-${r.severity === 'critical' ? 'error' : r.severity === 'warning' ? 'warning' : 'muted'}`}>
                 {r.item_name}
               </span>
@@ -151,12 +179,4 @@ export default function ScannerPage() {
       )}
     </div>
   );
-}
-
-interface ScanResultData {
-  item_name: string;
-  overall_result: 'safe' | 'unsafe' | 'caution';
-  ingredients: string[];
-  flagged: Array<{ ingredient: string; severity: string; reason: string }>;
-  explanation: string;
 }

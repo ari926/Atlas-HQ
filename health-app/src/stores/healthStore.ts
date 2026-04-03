@@ -244,7 +244,7 @@ export const useHealthStore = create<HealthState>((set, get) => ({
       .from('health-reports')
       .getPublicUrl(path);
 
-    const { error } = await supabase.from('health_reports').insert({
+    const { data: reportData, error } = await supabase.from('health_reports').insert({
       member_id: memberId,
       title,
       report_type: reportType,
@@ -255,15 +255,22 @@ export const useHealthStore = create<HealthState>((set, get) => ({
       file_mime_type: file.type,
       file_size_bytes: file.size,
       processing_status: 'pending',
-    });
+    }).select('id').single();
 
     if (error) {
       toast.error('Failed to save report record');
       return;
     }
 
-    toast.success('Report uploaded successfully');
+    toast.success('Report uploaded — AI processing started');
     get().loadMemberData(memberId);
+
+    // Trigger AI processing in background
+    if (reportData?.id) {
+      triggerReportProcessing(reportData.id, publicUrl, reportType, memberId).then(() => {
+        get().loadMemberData(memberId);
+      });
+    }
   },
 
   deleteReport: async (id: string) => {
@@ -317,3 +324,82 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     set({ regionHealthMap: regionMap });
   },
 }));
+
+// ─── AI API HELPERS ───
+
+const EDGE_URL = `${import.meta.env.VITE_SUPABASE_URL || 'https://dutvbquoyjtoctjstbmv.supabase.co'}/functions/v1/health-ai`;
+
+async function triggerReportProcessing(reportId: string, fileUrl: string, reportType: string, memberId: string) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    await fetch(EDGE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token ?? ''}`,
+        'x-action': 'process-report',
+      },
+      body: JSON.stringify({ report_id: reportId, file_url: fileUrl, report_type: reportType, member_id: memberId }),
+    });
+  } catch (err) {
+    console.error('Report processing trigger failed:', err);
+  }
+}
+
+export async function analyzeScanImage(
+  imageBase64: string,
+  mimeType: string,
+  scanType: string,
+  memberId: string,
+  restrictions: Array<{ item_name: string; severity: string; restriction_type: string; reaction?: string | null }>
+): Promise<ScanResult | null> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(EDGE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token ?? ''}`,
+        'x-action': 'analyze-scan',
+      },
+      body: JSON.stringify({ image_base64: imageBase64, mime_type: mimeType, scan_type: scanType, member_id: memberId, restrictions }),
+    });
+    if (!res.ok) return null;
+    return await res.json() as ScanResult;
+  } catch (err) {
+    console.error('Scan analysis failed:', err);
+    return null;
+  }
+}
+
+export async function sendHealthChat(
+  memberId: string,
+  messages: Array<{ role: string; content: string }>
+): Promise<string> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(EDGE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token ?? ''}`,
+        'x-action': 'chat',
+      },
+      body: JSON.stringify({ member_id: memberId, messages }),
+    });
+    if (!res.ok) throw new Error('Chat request failed');
+    const data = await res.json();
+    return data.response ?? 'Sorry, I could not process that.';
+  } catch (err) {
+    console.error('Health chat failed:', err);
+    return 'Sorry, there was an error connecting to the AI. Please try again.';
+  }
+}
+
+export interface ScanResult {
+  item_name: string;
+  overall_result: 'safe' | 'unsafe' | 'caution';
+  ingredients: string[];
+  flagged: Array<{ ingredient: string; severity: string; reason: string }>;
+  explanation: string;
+}

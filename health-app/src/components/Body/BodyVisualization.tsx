@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Text } from '@react-three/drei';
 import { useHealthStore, type RegionStatus } from '../../stores/healthStore';
+import { formatDate } from '../../lib/utils';
 import * as THREE from 'three';
 
 const REGION_COLORS: Record<RegionStatus, string> = {
@@ -27,13 +28,21 @@ function BodyRegion({ name, label, position, size, shape, status, selected, onSe
   const meshRef = useRef<THREE.Mesh>(null);
   const color = REGION_COLORS[status];
 
+  // Pulse effect for critical regions
+  useFrame(({ clock }) => {
+    if (meshRef.current && status === 'critical') {
+      const scale = 1 + Math.sin(clock.elapsedTime * 3) * 0.05;
+      meshRef.current.scale.setScalar(scale);
+    }
+  });
+
   return (
     <group position={position}>
       <mesh
         ref={meshRef}
         onClick={() => onSelect(name)}
-        onPointerOver={() => setHovered(true)}
-        onPointerOut={() => setHovered(false)}
+        onPointerOver={() => { setHovered(true); document.body.style.cursor = 'pointer'; }}
+        onPointerOut={() => { setHovered(false); document.body.style.cursor = 'auto'; }}
       >
         {shape === 'sphere' && <sphereGeometry args={[size[0], 16, 16]} />}
         {shape === 'box' && <boxGeometry args={size} />}
@@ -80,6 +89,8 @@ const BODY_REGIONS = [
   { name: 'spine', label: 'Spine', position: [0, 1.5, -0.3] as [number, number, number], size: [0.08, 2.0, 0.08] as [number, number, number], shape: 'capsule' as const },
 ];
 
+const ALL_REGION_NAMES = [...BODY_REGIONS.map(r => r.name), 'blood'];
+
 export default function BodyVisualization() {
   const { regionHealthMap, metrics } = useHealthStore();
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
@@ -87,6 +98,26 @@ export default function BodyVisualization() {
   const selectedMetrics = selectedRegion
     ? metrics.filter(m => m.body_region === selectedRegion)
     : [];
+
+  // Group metrics by name for trend display
+  const metricsByName = new Map<string, typeof metrics>();
+  for (const m of selectedMetrics) {
+    const existing = metricsByName.get(m.metric_name) ?? [];
+    existing.push(m);
+    metricsByName.set(m.metric_name, existing);
+  }
+
+  // Count per region for summary
+  const regionSummary = new Map<string, { total: number; flagged: number; status: RegionStatus }>();
+  for (const region of ALL_REGION_NAMES) {
+    const regionMetrics = metrics.filter(m => m.body_region === region);
+    const flagged = regionMetrics.filter(m => m.status === 'critical' || m.status === 'high' || m.status === 'low').length;
+    regionSummary.set(region, {
+      total: regionMetrics.length,
+      flagged,
+      status: regionHealthMap[region] ?? 'nodata',
+    });
+  }
 
   return (
     <div className="body-view">
@@ -116,44 +147,94 @@ export default function BodyVisualization() {
         </Canvas>
       </div>
 
-      {selectedRegion && (
-        <div className="body-region-panel">
-          <div className="body-region-panel-header">
-            <h3>{BODY_REGIONS.find(r => r.name === selectedRegion)?.label ?? selectedRegion}</h3>
-            <button className="btn btn-ghost btn-sm" onClick={() => setSelectedRegion(null)}>Close</button>
-          </div>
-
-          <div className="body-region-status">
-            <span className={`severity-dot severity-${regionHealthMap[selectedRegion] ?? 'nodata'}`} />
-            <span>{(regionHealthMap[selectedRegion] ?? 'nodata').toUpperCase()}</span>
-          </div>
-
-          {selectedMetrics.length === 0 ? (
-            <p style={{ color: 'var(--color-tx-muted)', fontSize: 'var(--text-sm)' }}>
-              No health metrics for this region yet. Upload a medical report to populate data.
-            </p>
-          ) : (
-            <div className="metric-list">
-              {selectedMetrics.slice(0, 10).map(m => (
-                <div key={m.id} className="metric-item">
-                  <div className="metric-name">{m.metric_name}</div>
-                  <div className="metric-value">
-                    {m.metric_value} {m.metric_unit ?? ''}
-                    <span className={`badge badge-${m.status === 'normal' ? 'success' : m.status === 'critical' ? 'error' : 'warning'}`}>
-                      {m.status}
-                    </span>
-                  </div>
-                  {(m.ref_range_low != null || m.ref_range_high != null) && (
-                    <div className="metric-range">
-                      Ref: {m.ref_range_low ?? '?'} - {m.ref_range_high ?? '?'} {m.metric_unit ?? ''}
-                    </div>
-                  )}
-                </div>
-              ))}
+      <div className="body-side-panel">
+        {selectedRegion ? (
+          <>
+            <div className="body-region-panel-header">
+              <h3>{BODY_REGIONS.find(r => r.name === selectedRegion)?.label ?? selectedRegion}</h3>
+              <button className="btn btn-ghost btn-sm" onClick={() => setSelectedRegion(null)}>Close</button>
             </div>
-          )}
-        </div>
-      )}
+
+            <div className="body-region-status">
+              <span className={`severity-dot severity-${regionHealthMap[selectedRegion] ?? 'nodata'}`} />
+              <span>{(regionHealthMap[selectedRegion] ?? 'nodata').toUpperCase()}</span>
+              <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--color-tx-faint)' }}>
+                {selectedMetrics.length} metric{selectedMetrics.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            {selectedMetrics.length === 0 ? (
+              <p style={{ color: 'var(--color-tx-muted)', fontSize: 'var(--text-sm)' }}>
+                No health metrics for this region yet. Upload a medical report to populate data.
+              </p>
+            ) : (
+              <div className="metric-list">
+                {Array.from(metricsByName.entries()).map(([name, items]) => {
+                  const latest = items[0];
+                  const hasTrend = items.length > 1;
+                  const prev = items[1];
+                  const trendUp = hasTrend && latest.metric_value > prev.metric_value;
+                  const trendDown = hasTrend && latest.metric_value < prev.metric_value;
+
+                  return (
+                    <div key={name} className="metric-item">
+                      <div className="metric-name">{name}</div>
+                      <div className="metric-value">
+                        {latest.metric_value} {latest.metric_unit ?? ''}
+                        {hasTrend && (
+                          <span style={{ fontSize: 'var(--text-xs)', color: trendUp ? 'var(--color-error)' : trendDown ? 'var(--color-success)' : 'var(--color-tx-faint)', marginLeft: '0.25rem' }}>
+                            {trendUp ? '\u2191' : trendDown ? '\u2193' : '\u2192'}
+                          </span>
+                        )}
+                        <span className={`badge badge-${latest.status === 'normal' ? 'success' : latest.status === 'critical' ? 'error' : 'warning'}`}>
+                          {latest.status}
+                        </span>
+                      </div>
+                      {(latest.ref_range_low != null || latest.ref_range_high != null) && (
+                        <div className="metric-range">
+                          Ref: {latest.ref_range_low ?? '?'} \u2013 {latest.ref_range_high ?? '?'} {latest.metric_unit ?? ''}
+                        </div>
+                      )}
+                      <div className="metric-range">{formatDate(latest.recorded_date)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <h3 style={{ marginBottom: '0.75rem', fontSize: 'var(--text-sm)', fontWeight: 600 }}>Region Summary</h3>
+            <div className="region-summary-list">
+              {Array.from(regionSummary.entries())
+                .filter(([_, s]) => s.total > 0)
+                .sort((a, b) => {
+                  const order: Record<RegionStatus, number> = { critical: 0, warning: 1, normal: 2, nodata: 3 };
+                  return order[a[1].status] - order[b[1].status];
+                })
+                .map(([region, summary]) => (
+                  <button
+                    key={region}
+                    className="region-summary-item"
+                    onClick={() => setSelectedRegion(region)}
+                  >
+                    <span className={`severity-dot severity-${summary.status}`} />
+                    <span className="region-summary-name">{region.replace(/_/g, ' ')}</span>
+                    <span className="region-summary-count">{summary.total} metrics</span>
+                    {summary.flagged > 0 && (
+                      <span className="badge badge-error" style={{ fontSize: '10px' }}>{summary.flagged} flagged</span>
+                    )}
+                  </button>
+                ))}
+              {Array.from(regionSummary.values()).every(s => s.total === 0) && (
+                <p style={{ color: 'var(--color-tx-muted)', fontSize: 'var(--text-sm)' }}>
+                  No health data yet. Upload a report to map data to body regions.
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
 
       <div className="body-legend">
         {Object.entries(REGION_COLORS).map(([status, color]) => (

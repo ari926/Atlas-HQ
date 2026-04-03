@@ -422,16 +422,25 @@ input, select, textarea { font-family: inherit; }
 .flagged-item { display: flex; align-items: center; gap: 0.5rem; font-size: var(--text-sm); padding: 0.25rem 0; }
 
 /* ─── WEARABLE CARDS ─── */
-.wearable-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+.wearable-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1rem; }
 .wearable-card {
-  display: flex; align-items: center; gap: 1rem;
+  display: flex; align-items: flex-start; gap: 1rem;
   background: var(--color-surface); border: 1px solid var(--color-divider);
   border-radius: var(--radius-lg); padding: 1.25rem;
+  transition: border-color var(--transition);
 }
-.wearable-card-icon { font-size: 2rem; }
-.wearable-card-info { flex: 1; }
+.wearable-card.connected { border-color: var(--color-success); }
+.wearable-card-icon-wrap {
+  width: 48px; height: 48px; border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.wearable-card-info { flex: 1; min-width: 0; }
 .wearable-card-info h3 { font-size: var(--text-sm); font-weight: 600; }
-.wearable-card-info p { font-size: var(--text-xs); color: var(--color-tx-muted); }
+.wearable-card-info p { font-size: var(--text-xs); color: var(--color-tx-muted); margin-top: 0.15rem; }
+.wearable-card-actions { display: flex; flex-direction: column; gap: 0.35rem; flex-shrink: 0; }
+.wearable-data-types { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.5rem; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinning { animation: spin 1s linear infinite; }
 
 /* ─── 3D BODY VIEW ─── */
 .body-canvas-container { height: calc(100vh - 180px); position: relative; }
@@ -439,6 +448,11 @@ input, select, textarea { font-family: inherit; }
 .body-canvas { flex: 1; border-radius: var(--radius-lg); overflow: hidden; background: var(--color-surface); border: 1px solid var(--color-divider); }
 .body-canvas canvas { border-radius: var(--radius-lg); }
 
+.body-side-panel {
+  width: 320px; background: var(--color-surface);
+  border: 1px solid var(--color-divider); border-radius: var(--radius-lg);
+  padding: 1.25rem; overflow-y: auto;
+}
 .body-region-panel {
   width: 320px; background: var(--color-surface);
   border: 1px solid var(--color-divider); border-radius: var(--radius-lg);
@@ -453,6 +467,18 @@ input, select, textarea { font-family: inherit; }
 .metric-name { font-size: var(--text-xs); font-weight: 500; color: var(--color-tx-muted); text-transform: uppercase; }
 .metric-value { font-size: var(--text-sm); font-weight: 600; display: flex; align-items: center; gap: 0.5rem; margin-top: 0.15rem; }
 .metric-range { font-size: var(--text-xs); color: var(--color-tx-faint); }
+
+.region-summary-list { display: flex; flex-direction: column; gap: 4px; }
+.region-summary-item {
+  display: flex; align-items: center; gap: 0.5rem; width: 100%;
+  padding: 0.4rem 0.6rem; border-radius: var(--radius-md);
+  background: none; border: 1px solid transparent;
+  font-size: var(--text-xs); text-align: left; color: var(--color-tx);
+  transition: all var(--transition); text-transform: capitalize;
+}
+.region-summary-item:hover { background: var(--color-surface-offset); border-color: var(--color-divider); }
+.region-summary-name { flex: 1; font-weight: 500; }
+.region-summary-count { color: var(--color-tx-faint); }
 
 .body-legend {
   position: absolute; bottom: 1rem; left: 1rem;
@@ -489,6 +515,26 @@ input, select, textarea { font-family: inherit; }
 .chat-message-content.typing { color: var(--color-tx-muted); font-style: italic; }
 .chat-input-bar { display: flex; gap: 0.5rem; padding: 0.75rem 0; border-top: 1px solid var(--color-divider); margin-top: auto; }
 .chat-input-bar .input-field { flex: 1; }
+
+/* ─── DOCTOR CARDS ─── */
+.doctor-list { display: flex; flex-direction: column; gap: 1rem; }
+.doctor-card {
+  background: var(--color-surface); border: 1px solid var(--color-divider);
+  border-radius: var(--radius-lg); padding: 1.25rem;
+}
+.doctor-card-header { display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 1rem; }
+.doctor-card-avatar {
+  width: 42px; height: 42px; border-radius: var(--radius-full);
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--text-xs); font-weight: 700; color: white; flex-shrink: 0;
+}
+.doctor-card-info { flex: 1; }
+.doctor-card-info h3 { font-size: var(--text-sm); font-weight: 600; }
+.doctor-card-info p { font-size: var(--text-xs); color: var(--color-tx-muted); }
+.doctor-card-access { margin-bottom: 0.75rem; }
+.doctor-card-access h4 { font-size: var(--text-xs); font-weight: 600; color: var(--color-tx-muted); text-transform: uppercase; margin-bottom: 0.4rem; }
+.doctor-member-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.doctor-card-actions { display: flex; gap: 0.5rem; justify-content: flex-end; border-top: 1px solid var(--color-divider); padding-top: 0.75rem; }
 
 /* ─── FILTER BAR ─── */
 .filter-bar {
