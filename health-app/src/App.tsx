@@ -36,7 +36,7 @@ export default function App() {
   const loadFamilyMembers = useHealthStore(s => s.loadFamilyMembers);
 
   useEffect(() => { initialize(); }, [initialize]);
-  useEffect(() => { if (session) loadFamilyMembers(); }, [session, loadFamilyMembers]);
+  useEffect(() => { loadFamilyMembers(); }, [session, loadFamilyMembers]);
 
   return (
     <BrowserRouter>

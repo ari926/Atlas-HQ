@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { SEED_MEMBERS, SEED_REPORTS, SEED_RESTRICTIONS, SEED_METRICS, SEED_VITALS } from '../lib/seedData';
 
 export interface FamilyMember {
   id: string;
@@ -119,9 +120,14 @@ export const useHealthStore = create<HealthState>((set, get) => ({
       .select('*')
       .order('created_at', { ascending: true });
 
-    if (error) {
-      toast.error('Failed to load family members');
-      set({ loading: false });
+    if (error || !data || data.length === 0) {
+      // Fall back to demo seed data when DB is empty/unavailable
+      const members = SEED_MEMBERS;
+      set({ familyMembers: members, loading: false });
+      if (!get().activeMemberId && members.length > 0) {
+        set({ activeMemberId: members[0].id });
+        get().loadMemberData(members[0].id);
+      }
       return;
     }
 
@@ -148,13 +154,12 @@ export const useHealthStore = create<HealthState>((set, get) => ({
       supabase.from('vitals').select('*').eq('member_id', memberId).order('recorded_at', { ascending: false }).limit(100),
     ]);
 
-    set({
-      reports: reportsRes.data ?? [],
-      restrictions: restrictionsRes.data ?? [],
-      metrics: metricsRes.data ?? [],
-      vitals: vitalsRes.data ?? [],
-    });
+    const reports = reportsRes.data?.length ? reportsRes.data : SEED_REPORTS.filter(r => r.member_id === memberId);
+    const restrictions = restrictionsRes.data?.length ? restrictionsRes.data : SEED_RESTRICTIONS.filter(r => r.member_id === memberId);
+    const metrics = metricsRes.data?.length ? metricsRes.data : SEED_METRICS.filter(m => m.member_id === memberId);
+    const vitals = vitalsRes.data?.length ? vitalsRes.data : SEED_VITALS.filter(v => v.member_id === memberId);
 
+    set({ reports, restrictions, metrics, vitals });
     get().computeRegionHealth();
   },
 
